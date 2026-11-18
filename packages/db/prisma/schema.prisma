@@ -1,0 +1,277 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+enum JobStatus {
+  queued
+  uploading
+  analyzing
+  candidates_ready
+  rendering
+  complete
+  failed
+  cancelled
+}
+
+enum StreamType {
+  regular_video
+  live_stream
+  archived_stream
+  upcoming_stream
+  unknown
+}
+
+enum MetadataSource {
+  youtube_data_api
+  oembed
+  none
+}
+
+enum SceneEventType {
+  scene_cut
+  motion_burst
+  audio_reaction
+  speech_peak
+  silence_to_burst
+}
+
+enum CandidateStatus {
+  suggested
+  selected
+  discarded
+}
+
+enum LayoutMode {
+  split_cam_top
+  pip_overlay
+  gameplay_focus
+}
+
+enum CaptionStyle {
+  bold_gaming
+  clean_minimal
+  boxed_high_contrast
+}
+
+enum ExportPreset {
+  youtube_shorts
+  tiktok
+  instagram_reels
+}
+
+enum RenderStatus {
+  queued
+  rendering
+  complete
+  failed
+  cancelled
+}
+
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  sessions      Session[]
+  jobs          ClipJob[]
+  renderExports RenderExport[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model ClipJob {
+  id     String    @id @default(cuid())
+  userId String
+  status JobStatus @default(queued)
+
+  // YouTube reference & permitted metadata (never downloaded/scraped)
+  youtubeUrl          String
+  youtubeVideoId      String
+  youtubeTitle        String?
+  youtubeChannel      String?
+  youtubeThumbnailUrl String?
+  youtubeDurationSec  Int?
+  youtubeStreamType   StreamType     @default(unknown)
+  metadataSource      MetadataSource @default(none)
+  metadataNotice      String?
+
+  // Authorized user media source
+  sourceProvider      String  @default("authorized_upload")
+  sourceStorageKey    String?
+  sourceFileName      String?
+  sourceMimeType      String?
+  sourceFileSizeBytes BigInt?
+
+  // Probed media properties (populated only after authorized media is uploaded & probed)
+  mediaDurationSec Float?
+  mediaWidth       Int?
+  mediaHeight      Int?
+  mediaFps         Float?
+  mediaHasAudio    Boolean?
+
+  // Analysis configuration & results
+  analysisConfigJson Json?
+  faceCamDetected    Boolean @default(false)
+  faceCamRegionJson  Json?
+  speechProviderUsed String?
+  analysisSummary    String?
+
+  // Progress & error tracking
+  progressPct      Int        @default(0)
+  progressMessage  String?
+  errorCode        String?
+  errorMessage     String?
+  failedFromStatus JobStatus?
+  retryCount       Int        @default(0)
+
+  // Worker lease for idempotent background execution
+  workerLockedAt DateTime?
+  workerId       String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcriptSegments TranscriptSegment[]
+  sceneEvents        SceneEvent[]
+  candidates         CandidateClip[]
+  renderExports      RenderExport[]
+
+  @@index([userId, createdAt])
+  @@index([status, workerLockedAt])
+}
+
+model TranscriptSegment {
+  id            String  @id @default(cuid())
+  jobId         String
+  segmentIndex  Int
+  startSec      Float
+  endSec        Float
+  text          String
+  language      String  @default("en")
+  confidence    Float
+  lowConfidence Boolean @default(false)
+  needsReview   Boolean @default(false)
+  wordsJson     Json?
+
+  job ClipJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, segmentIndex])
+  @@index([jobId, startSec])
+}
+
+model SceneEvent {
+  id           String         @id @default(cuid())
+  jobId        String
+  timestampSec Float
+  endSec       Float?
+  type         SceneEventType
+  score        Float
+  metadataJson Json?
+
+  job ClipJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, timestampSec])
+}
+
+model CandidateClip {
+  id               String          @id @default(cuid())
+  jobId            String
+  rank             Int
+  title            String
+  startSec         Float
+  endSec           Float
+  originalStartSec Float
+  originalEndSec   Float
+  score            Float
+  confidence       Float
+  signalBreakdown  Json
+  reason           String
+  transcriptExcerpt String
+  status           CandidateStatus @default(suggested)
+
+  // Rendering & caption settings (user-editable)
+  layoutMode            LayoutMode   @default(gameplay_focus)
+  faceCamCropJson       Json?
+  captionLanguage       String       @default("en")
+  captionStyle          CaptionStyle @default(bold_gaming)
+  captionsEnabled       Boolean      @default(true)
+  captionsJson          Json
+  hasUnreviewedCaptions Boolean      @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  job           ClipJob        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  renderExports RenderExport[]
+
+  @@index([jobId, rank])
+}
+
+model RenderExport {
+  id       String       @id @default(cuid())
+  jobId    String
+  clipId   String
+  userId   String
+  preset   ExportPreset
+  status   RenderStatus @default(queued)
+
+  // Snapshot of render settings used for reproducibility
+  startSec        Float
+  endSec          Float
+  layoutMode      LayoutMode
+  captionStyle    CaptionStyle
+  captionLanguage String
+  captionsEnabled Boolean      @default(true)
+  faceCamCropJson Json?
+  captionsJson    Json
+
+  // Progress & output metadata (stored in object storage, never in DB)
+  progressPct         Int     @default(0)
+  progressMessage     String?
+  outputStorageKey    String?
+  outputFileName      String?
+  outputFileSizeBytes BigInt?
+  outputDurationSec   Float?
+  width               Int     @default(1080)
+  height              Int     @default(1920)
+
+  errorCode      String?
+  errorMessage   String?
+  retryCount     Int       @default(0)
+  workerLockedAt DateTime?
+  workerId       String?
+  idempotencyKey String?   @unique
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  job  ClipJob       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  clip CandidateClip @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([jobId, status])
+  @@index([status, workerLockedAt])
+}

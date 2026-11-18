@@ -1,0 +1,27 @@
+{
+  "name": "clipforge-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.14.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @clipforge/web --filter @clipforge/worker dev",
+    "dev:web": "pnpm --filter @clipforge/web dev",
+    "dev:worker": "pnpm --filter @clipforge/worker dev",
+    "build": "pnpm --filter @clipforge/core build && pnpm --filter @clipforge/db build && pnpm --filter @clipforge/worker build && pnpm --filter @clipforge/web build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "db:generate": "pnpm --filter @clipforge/db generate",
+    "db:migrate": "pnpm --filter @clipforge/db migrate",
+    "db:migrate:deploy": "pnpm --filter @clipforge/db migrate:deploy",
+    "db:push": "pnpm --filter @clipforge/db push"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
