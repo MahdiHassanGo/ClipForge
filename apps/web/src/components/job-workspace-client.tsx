@@ -173,6 +173,7 @@ export function JobWorkspaceClient({
   const hasActiveWork =
     job.status === "uploading" ||
     job.status === "analyzing" ||
+    job.status === "live_monitoring" ||
     job.status === "rendering" ||
     job.renderExports.some((e) => e.status === "queued" || e.status === "rendering");
 
