@@ -49,12 +49,18 @@ export class DefaultClipScoringProvider implements ClipScoringProvider {
     const totalSeconds = Math.max(1, Math.ceil(duration));
     const { config } = input;
 
-    // Effective bounds adapt gracefully when an uploaded test clip is shorter than default minClipSec
-    const effectiveMinSec = Math.min(config.minClipSec, Math.max(3, duration * 0.6));
+    // Effective bounds adapt gracefully when an uploaded test clip or live slice is shorter than default minClipSec
+    const effectiveMinSec = Math.min(
+      config.minClipSec,
+      duration <= 90 ? Math.min(12, Math.max(3, duration * 0.25)) : Math.max(3, duration * 0.6),
+    );
     const effectiveMaxSec = Math.min(config.maxClipSec, duration);
     const effectiveTargetSec = Math.max(
       effectiveMinSec,
-      Math.min(config.targetClipSec, effectiveMaxSec),
+      Math.min(
+        config.targetClipSec,
+        duration <= 90 ? Math.min(22, Math.max(effectiveMinSec, duration * 0.35)) : effectiveMaxSec,
+      ),
     );
 
     const hasRealTranscript = input.transcriptSegments.some(
@@ -229,7 +235,7 @@ export class DefaultClipScoringProvider implements ClipScoringProvider {
         timeline,
       });
 
-      // Reject heavy overlap (>30% of candidate duration) with an already selected stronger moment
+      // Reject heavy overlap (>35% of candidate duration) with an already selected stronger moment
       const overlaps = acceptedWindows.some((existing) => {
         const overlapSec = Math.max(
           0,
@@ -240,7 +246,7 @@ export class DefaultClipScoringProvider implements ClipScoringProvider {
           existing.endSec - existing.startSec,
           window.endSec - window.startSec,
         );
-        return shorter > 0 && overlapSec / shorter > 0.3;
+        return shorter > 0 && overlapSec / shorter > 0.35;
       });
       if (overlaps) continue;
 
@@ -252,20 +258,30 @@ export class DefaultClipScoringProvider implements ClipScoringProvider {
         contextScore: window.contextScore,
       });
 
+      const hasChatSignals =
+        (breakdown.chatVelocityScore ?? 0) > 0.05 || timeline.some((b) => b.chatScore > 0.05);
+
       const finalScore = clamp01(
-        hasRealTranscript
-          ? breakdown.speechScore * 0.32 +
-              breakdown.reactionScore * 0.22 +
-              breakdown.motionScore * 0.22 +
-              breakdown.sceneScore * 0.12 +
-              breakdown.contextScore * 0.07 +
+        hasChatSignals
+          ? (breakdown.chatVelocityScore ?? 0) * 0.28 +
+              breakdown.reactionScore * 0.24 +
+              breakdown.motionScore * 0.20 +
+              breakdown.speechScore * 0.16 +
+              breakdown.sceneScore * 0.07 +
               breakdown.faceCamBonus
-          : breakdown.reactionScore * 0.30 +
-              breakdown.motionScore * 0.30 +
-              breakdown.sceneScore * 0.18 +
-              breakdown.speechScore * 0.08 +
-              breakdown.contextScore * 0.09 +
-              breakdown.faceCamBonus,
+          : hasRealTranscript
+            ? breakdown.speechScore * 0.32 +
+                breakdown.reactionScore * 0.22 +
+                breakdown.motionScore * 0.22 +
+                breakdown.sceneScore * 0.12 +
+                breakdown.contextScore * 0.07 +
+                breakdown.faceCamBonus
+            : breakdown.reactionScore * 0.30 +
+                breakdown.motionScore * 0.30 +
+                breakdown.sceneScore * 0.18 +
+                breakdown.speechScore * 0.08 +
+                breakdown.contextScore * 0.09 +
+                breakdown.faceCamBonus,
       );
 
       // Apply threshold, but always allow at least 1 top moment so the user isn't left empty-handed

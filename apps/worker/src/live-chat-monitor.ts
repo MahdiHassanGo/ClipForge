@@ -139,19 +139,22 @@ export function computeLiveChatVelocity(
       Math.min(1, Math.min(1, mpsLift * 0.45) + Math.min(0.55, hypeRatio * 1.2)),
     );
 
+    const chatEngagement = Math.min(1, (mps / 3.0) * 0.45 + (hypeRatio > 0 ? 0.35 : 0));
+    const effectiveSpikeScore = Math.max(spikeScore, chatEngagement);
+
     velocityPoints.push({
       second,
       messagesPerSec: Math.round(mps * 10) / 10,
       hypeKeywordDensity: Math.round(hypeRatio * 100) / 100,
-      spikeScore: Math.round(spikeScore * 100) / 100,
+      spikeScore: Math.round(effectiveSpikeScore * 100) / 100,
     });
 
-    if (spikeScore >= 0.55 || (mps >= 2.0 && mps > averageMps * 1.8)) {
+    if (effectiveSpikeScore >= 0.35 || mps >= 1.5 || (averageMps > 0 && mps > averageMps * 1.3)) {
       events.push({
         timestampSec: second,
         endSec: second + bucketSec,
         type: "chat_velocity_spike",
-        score: Math.round(Math.max(0.65, spikeScore) * 100) / 100,
+        score: Math.round(Math.max(0.55, effectiveSpikeScore) * 100) / 100,
         metadata: {
           mps: Math.round(mps * 10) / 10,
           hypeRatio: Math.round(hypeRatio * 100) / 100,

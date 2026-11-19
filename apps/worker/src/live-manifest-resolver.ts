@@ -98,8 +98,11 @@ export async function resolveLiveManifest(
       throw new Error("No live HLS stream manifests were returned for this URL.");
     }
 
-    const videoManifestUrl = lines[0]!;
-    const audioManifestUrl = lines[1] ?? lines[0]!;
+    const videoManifestUrl =
+      lines.find((l) => l.includes("sgovp") || l.includes("video")) ?? lines[0]!;
+    const audioManifestUrl =
+      lines.find((l) => l.includes("sgoap") || l.includes("audio")) ??
+      (lines.length > 1 ? lines[1]! : lines[0]!);
 
     return {
       isLive: true,

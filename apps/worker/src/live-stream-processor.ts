@@ -74,9 +74,7 @@ export class LiveStreamProcessor {
       await updateProgress(10, "Step A: Resolving rolling live HLS/DASH manifest...");
       jobLog.info("Resolving live HLS manifest...");
 
-      const manifestResult = await resolveLiveManifest(
-        job.liveManifestUrl || job.youtubeUrl,
-      );
+      const manifestResult = await resolveLiveManifest(job.youtubeUrl);
 
       await prisma.clipJob.update({
         where: { id: jobId },
@@ -87,8 +85,8 @@ export class LiveStreamProcessor {
         },
       });
 
-      // Sample a 180-second (3-minute) rolling live window
-      const sampleWindowSec = 180;
+      // Sample a 60-second rolling live window
+      const sampleWindowSec = 60;
       const ffmpeg = resolveFfmpegPath();
 
       // --- STEP B: Audio-First Bandwidth Optimization ---
@@ -106,8 +104,6 @@ export class LiveStreamProcessor {
           "-y",
           "-v",
           "error",
-          "-ss",
-          "0",
           "-t",
           String(sampleWindowSec),
           "-i",
@@ -121,7 +117,7 @@ export class LiveStreamProcessor {
           "pcm_s16le",
           audioWavPath,
         ],
-        { timeoutMs: 90_000 },
+        { timeoutMs: 120_000 },
       );
 
       // Run PCM audio reaction & excitement analysis
@@ -177,11 +173,11 @@ export class LiveStreamProcessor {
       const defaultCfg = getDefaultAnalysisConfig();
       const config: AnalysisConfig = {
         ...defaultCfg,
-        minClipSec: Math.min(defaultCfg.minClipSec, 15),
-        maxClipSec: Math.min(defaultCfg.maxClipSec, 45),
-        targetClipSec: 30,
-        scoreThreshold: 0.22,
-        maxCandidates: 6,
+        minClipSec: 12,
+        maxClipSec: 32,
+        targetClipSec: 18,
+        scoreThreshold: 0.18,
+        maxCandidates: 5,
       };
 
       const preDrafts = this.scoringProvider.generateCandidates({
@@ -212,21 +208,11 @@ export class LiveStreamProcessor {
       }
 
       // --- STEP D: Selective Video Slicing & Vision AI ---
-      // Determine the bounding window that encapsulates the top moments (e.g. 60–100s long)
-      const topMoments = preDrafts.slice(0, 4);
-      let windowStartSec = Math.max(0, Math.floor(Math.min(...topMoments.map((d) => d.startSec)) - 5));
-      let windowEndSec = Math.min(sampleWindowSec, Math.ceil(Math.max(...topMoments.map((d) => d.endSec)) + 5));
-
-      // Ensure slice window is at least 45 seconds and at most 120 seconds
-      if (windowEndSec - windowStartSec < 45) {
-        const pad = Math.ceil((45 - (windowEndSec - windowStartSec)) / 2);
-        windowStartSec = Math.max(0, windowStartSec - pad);
-        windowEndSec = Math.min(sampleWindowSec, windowEndSec + pad);
-      }
-      if (windowEndSec - windowStartSec > 120) {
-        windowEndSec = windowStartSec + 120;
-      }
-      const sliceDuration = windowEndSec - windowStartSec;
+      // Fetch a full 60-second rolling high-resolution window with synchronized audio
+      // This guarantees multiple non-overlapping candidate moments (3-5 clips) can be extracted
+      const windowStartSec = 0;
+      const windowEndSec = sampleWindowSec;
+      const sliceDuration = sampleWindowSec;
 
       await updateProgress(
         78,
@@ -244,8 +230,6 @@ export class LiveStreamProcessor {
         "-y",
         "-v",
         "error",
-        "-ss",
-        String(windowStartSec),
         "-t",
         String(sliceDuration),
         "-i",
@@ -257,8 +241,6 @@ export class LiveStreamProcessor {
         manifestResult.audioManifestUrl !== manifestResult.videoManifestUrl
       ) {
         sliceArgs.push(
-          "-ss",
-          String(windowStartSec),
           "-t",
           String(sliceDuration),
           "-i",
