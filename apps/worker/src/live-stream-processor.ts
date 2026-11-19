@@ -16,6 +16,7 @@ import { resolveLiveManifest } from "./live-manifest-resolver.js";
 import { pollLiveChatSnapshot } from "./live-chat-monitor.js";
 import { FfmpegAudioAnalysisProvider } from "./audio-provider.js";
 import { createSpeechRecognitionProvider } from "./speech-provider.js";
+import { FfmpegSceneDetectionProvider } from "./scene-provider.js";
 import { FfmpegFaceCamDetectionProvider } from "./facecam-provider.js";
 import { probeMediaFile } from "./media-probe.js";
 
@@ -26,6 +27,7 @@ export class LiveStreamProcessor {
   private readonly tempRoot: string;
   private readonly storage: ObjectStorageProvider;
   private readonly audioProvider = new FfmpegAudioAnalysisProvider();
+  private readonly sceneProvider = new FfmpegSceneDetectionProvider();
   private readonly faceCamProvider = new FfmpegFaceCamDetectionProvider();
   private readonly scoringProvider = new DefaultClipScoringProvider();
 
@@ -85,8 +87,8 @@ export class LiveStreamProcessor {
         },
       });
 
-      // Sample a recent 90-second rolling live window
-      const sampleWindowSec = 90;
+      // Sample a 180-second (3-minute) rolling live window
+      const sampleWindowSec = 180;
       const ffmpeg = resolveFfmpegPath();
 
       // --- STEP B: Audio-First Bandwidth Optimization ---
@@ -171,17 +173,18 @@ export class LiveStreamProcessor {
         });
       }
 
-      // --- Score Multi-Signal Candidate Moments ---
+      // --- Score Multi-Signal Candidate Moments on Audio & Chat ---
       const defaultCfg = getDefaultAnalysisConfig();
       const config: AnalysisConfig = {
         ...defaultCfg,
         minClipSec: Math.min(defaultCfg.minClipSec, 15),
         maxClipSec: Math.min(defaultCfg.maxClipSec, 45),
         targetClipSec: 30,
-        scoreThreshold: 0.35,
+        scoreThreshold: 0.22,
+        maxCandidates: 6,
       };
 
-      const drafts = this.scoringProvider.generateCandidates({
+      const preDrafts = this.scoringProvider.generateCandidates({
         probe: {
           durationSec: sampleWindowSec,
           width: 1920,
@@ -199,7 +202,7 @@ export class LiveStreamProcessor {
         config,
       });
 
-      if (drafts.length === 0) {
+      if (preDrafts.length === 0) {
         jobLog.info("No strong peak in current live window; waiting for next rolling cycle.");
         await updateProgress(
           100,
@@ -209,41 +212,87 @@ export class LiveStreamProcessor {
       }
 
       // --- STEP D: Selective Video Slicing & Vision AI ---
-      // Download ONLY the 30-60s video chunk for the highest-scoring candidate moment!
-      const topCandidate = drafts[0]!;
-      const sliceDuration = Math.max(5, topCandidate.endSec - topCandidate.startSec);
+      // Determine the bounding window that encapsulates the top moments (e.g. 60–100s long)
+      const topMoments = preDrafts.slice(0, 4);
+      let windowStartSec = Math.max(0, Math.floor(Math.min(...topMoments.map((d) => d.startSec)) - 5));
+      let windowEndSec = Math.min(sampleWindowSec, Math.ceil(Math.max(...topMoments.map((d) => d.endSec)) + 5));
+
+      // Ensure slice window is at least 45 seconds and at most 120 seconds
+      if (windowEndSec - windowStartSec < 45) {
+        const pad = Math.ceil((45 - (windowEndSec - windowStartSec)) / 2);
+        windowStartSec = Math.max(0, windowStartSec - pad);
+        windowEndSec = Math.min(sampleWindowSec, windowEndSec + pad);
+      }
+      if (windowEndSec - windowStartSec > 120) {
+        windowEndSec = windowStartSec + 120;
+      }
+      const sliceDuration = windowEndSec - windowStartSec;
+
       await updateProgress(
-        85,
-        `Step D: Selective Video Slicing — fetching ONLY ${Math.round(sliceDuration)}s high-res video from live manifest...`,
+        78,
+        `Step D: Selective Video Slicing — fetching ${Math.round(sliceDuration)}s high-res stream with synchronized audio...`,
       );
       jobLog.info(
-        `Step D: Slicing selective video chunk (${topCandidate.startSec}s–${topCandidate.endSec}s)...`,
+        `Step D: Slicing selective high-res video and audio (${windowStartSec}s–${windowEndSec}s)...`,
       );
 
-      const sliceFileName = `live_slice_${jobId}_${Math.floor(topCandidate.startSec)}_${Math.floor(topCandidate.endSec)}.mp4`;
+      const sliceFileName = `live_slice_${jobId}_${windowStartSec}_${windowEndSec}.mp4`;
       const localSlicePath = path.join(workDir, sliceFileName);
 
-      await runExecFile(
-        ffmpeg,
-        [
-          "-y",
-          "-v",
-          "error",
+      // Download BOTH video and audio together so the sliced MP4 has full game audio and streamer voice
+      const sliceArgs: string[] = [
+        "-y",
+        "-v",
+        "error",
+        "-ss",
+        String(windowStartSec),
+        "-t",
+        String(sliceDuration),
+        "-i",
+        manifestResult.videoManifestUrl,
+      ];
+
+      if (
+        manifestResult.audioManifestUrl &&
+        manifestResult.audioManifestUrl !== manifestResult.videoManifestUrl
+      ) {
+        sliceArgs.push(
           "-ss",
-          String(topCandidate.startSec),
+          String(windowStartSec),
           "-t",
           String(sliceDuration),
           "-i",
-          manifestResult.videoManifestUrl,
-          "-c",
+          manifestResult.audioManifestUrl,
+          "-map",
+          "0:v:0",
+          "-map",
+          "1:a:0?",
+          "-c:v",
           "copy",
-          localSlicePath,
-        ],
-        { timeoutMs: 90_000 },
-      );
+          "-c:a",
+          "aac",
+          "-b:a",
+          "192k",
+        );
+      } else {
+        sliceArgs.push("-c", "copy");
+      }
 
-      // Probe sliced media & run face-cam detection on the selective video slice
+      sliceArgs.push(localSlicePath);
+      await runExecFile(ffmpeg, sliceArgs, { timeoutMs: 120_000 });
+
+      // Probe sliced media to get accurate duration, width, height, fps, and audio channels
       const probe: MediaProbeResult = await probeMediaFile(localSlicePath);
+
+      // Run gameplay motion and scene cut detection on the selective video slice
+      await updateProgress(85, "Analyzing gameplay motion & scene transitions in captured stream...");
+      const sceneResult = await this.sceneProvider.detect({
+        videoFilePath: localSlicePath,
+        durationSec: probe.durationSec,
+      });
+
+      // Run face-cam detection on the selective video slice
+      await updateProgress(90, "Detecting face-cam positioning and framing in captured slice...");
       const faceCamResult = await this.faceCamProvider.detect({
         videoFilePath: localSlicePath,
         probe,
@@ -258,15 +307,77 @@ export class LiveStreamProcessor {
         "video/mp4",
       );
 
-      // Persist candidate clip, transcript segments, and scene events to PostgreSQL
+      // Map segments, audio timeline, and scene events to the sliced video's timeline [0..probe.durationSec]
+      const sliceSegments = speechResult.segments
+        .filter((seg) => seg.endSec > windowStartSec && seg.startSec < windowEndSec)
+        .map((seg, idx) => ({
+          ...seg,
+          index: idx,
+          startSec: Math.max(0, Math.round((seg.startSec - windowStartSec) * 100) / 100),
+          endSec: Math.min(probe.durationSec, Math.round((seg.endSec - windowStartSec) * 100) / 100),
+          words: seg.words
+            .filter((w) => w.endSec > windowStartSec && w.startSec < windowEndSec)
+            .map((w) => ({
+              ...w,
+              startSec: Math.max(0, Math.round((w.startSec - windowStartSec) * 100) / 100),
+              endSec: Math.min(probe.durationSec, Math.round((w.endSec - windowStartSec) * 100) / 100),
+            })),
+        }))
+        .filter((seg) => seg.endSec > seg.startSec);
+
+      const sliceAudioTimeline = audioResult.timeline
+        .filter((pt) => pt.second >= windowStartSec && pt.second < windowEndSec)
+        .map((pt) => ({
+          ...pt,
+          second: pt.second - windowStartSec,
+        }));
+
+      const sliceChatEvents = combinedSceneEvents
+        .filter((ev) => ev.timestampSec >= windowStartSec && ev.timestampSec <= windowEndSec)
+        .map((ev) => ({
+          ...ev,
+          timestampSec: Math.max(0, ev.timestampSec - windowStartSec),
+          endSec: ev.endSec != null ? Math.min(probe.durationSec, ev.endSec - windowStartSec) : undefined,
+        }));
+
+      const allSliceEvents = [...sliceChatEvents, ...sceneResult.events].sort(
+        (a, b) => a.timestampSec - b.timestampSec,
+      );
+
+      // Generate final multimodal candidate moments with full visual, audio, speech, and motion data
+      await updateProgress(95, "Generating candidate vertical highlights with multimodal scoring...");
+      const finalDrafts = this.scoringProvider.generateCandidates({
+        probe,
+        transcriptSegments: sliceSegments,
+        audioTimeline: sliceAudioTimeline,
+        motionTimeline: sceneResult.timeline,
+        sceneEvents: allSliceEvents,
+        faceCam: faceCamResult,
+        config: {
+          ...config,
+          maxCandidates: 6,
+        },
+      });
+
+      const candidateList =
+        finalDrafts.length > 0
+          ? finalDrafts
+          : preDrafts.slice(0, 3).map((d, i) => ({
+              ...d,
+              rank: i + 1,
+              startSec: Math.max(0, d.startSec - windowStartSec),
+              endSec: Math.min(probe.durationSec, d.endSec - windowStartSec),
+            }));
+
+      // Persist candidate clips, transcript segments, and scene events to PostgreSQL
       await prisma.$transaction(async (tx) => {
         await tx.transcriptSegment.deleteMany({ where: { jobId: job.id } });
         await tx.sceneEvent.deleteMany({ where: { jobId: job.id } });
         await tx.candidateClip.deleteMany({ where: { jobId: job.id } });
 
-        if (speechResult.segments.length > 0) {
+        if (sliceSegments.length > 0) {
           await tx.transcriptSegment.createMany({
-            data: speechResult.segments.map((seg) => ({
+            data: sliceSegments.map((seg) => ({
               jobId: job.id,
               segmentIndex: seg.index,
               startSec: seg.startSec,
@@ -281,9 +392,9 @@ export class LiveStreamProcessor {
           });
         }
 
-        if (combinedSceneEvents.length > 0) {
+        if (allSliceEvents.length > 0) {
           await tx.sceneEvent.createMany({
-            data: combinedSceneEvents.map((ev) => ({
+            data: allSliceEvents.map((ev) => ({
               jobId: job.id,
               timestampSec: ev.timestampSec,
               endSec: ev.endSec ?? null,
@@ -294,33 +405,34 @@ export class LiveStreamProcessor {
           });
         }
 
-        // Adjust top candidate bounds relative to the sliced video (0..sliceDuration)
-        await tx.candidateClip.create({
-          data: {
-            jobId: job.id,
-            rank: 1,
-            title: topCandidate.title,
-            startSec: 0,
-            endSec: Math.round(sliceDuration * 100) / 100,
-            originalStartSec: topCandidate.startSec,
-            originalEndSec: topCandidate.endSec,
-            score: topCandidate.score,
-            confidence: topCandidate.confidence,
-            signalBreakdown: topCandidate.signalBreakdown as unknown as Prisma.InputJsonValue,
-            reason: `${topCandidate.reason} (Sliced live using audio-first + chat spike detection)`,
-            transcriptExcerpt: topCandidate.transcriptExcerpt,
-            status: "selected",
-            layoutMode: faceCamResult.detected ? "split_cam_top" : "gameplay_focus",
-            faceCamCropJson: faceCamResult.region
-              ? (faceCamResult.region as unknown as Prisma.InputJsonValue)
-              : Prisma.JsonNull,
-            captionLanguage: "en",
-            captionStyle: "bold_gaming",
-            captionsEnabled: true,
-            captionsJson: topCandidate.captions as unknown as Prisma.InputJsonValue,
-            hasUnreviewedCaptions: topCandidate.hasUnreviewedCaptions,
-          },
-        });
+        for (const draft of candidateList) {
+          await tx.candidateClip.create({
+            data: {
+              jobId: job.id,
+              rank: draft.rank,
+              title: draft.title,
+              startSec: draft.startSec,
+              endSec: draft.endSec,
+              originalStartSec: draft.startSec + windowStartSec,
+              originalEndSec: draft.endSec + windowStartSec,
+              score: draft.score,
+              confidence: draft.confidence,
+              signalBreakdown: draft.signalBreakdown as unknown as Prisma.InputJsonValue,
+              reason: `${draft.reason} (Captured live via Audio-First + Chat Velocity + Motion analysis)`,
+              transcriptExcerpt: draft.transcriptExcerpt,
+              status: draft.rank <= 2 ? "selected" : "suggested",
+              layoutMode: faceCamResult.detected ? "split_cam_top" : "gameplay_focus",
+              faceCamCropJson: faceCamResult.region
+                ? (faceCamResult.region as unknown as Prisma.InputJsonValue)
+                : Prisma.JsonNull,
+              captionLanguage: "en",
+              captionStyle: "bold_gaming",
+              captionsEnabled: true,
+              captionsJson: draft.captions as unknown as Prisma.InputJsonValue,
+              hasUnreviewedCaptions: draft.hasUnreviewedCaptions,
+            },
+          });
+        }
 
         await tx.clipJob.update({
           where: { id: job.id },
@@ -340,9 +452,9 @@ export class LiveStreamProcessor {
               ? (faceCamResult.region as unknown as Prisma.InputJsonValue)
               : Prisma.JsonNull,
             speechProviderUsed: speechResult.providerName,
-            analysisSummary: `Live Stream Moment Captured: ${Math.round(sliceDuration)}s high-res slice extracted via Live HLS + Audio-first + Chat velocity spike analysis.`,
+            analysisSummary: `Live Stream Captured: ${Math.round(probe.durationSec)}s (${probe.width}×${probe.height}) with ${candidateList.length} candidate moments identified · Synced audio & gameplay motion.`,
             progressPct: 100,
-            progressMessage: "Live stream moment captured! Ready to preview, edit & export.",
+            progressMessage: `Live stream captured! ${candidateList.length} highlight moments ready to preview, edit & export with full audio.`,
             workerLockedAt: null,
             workerId: null,
           },
