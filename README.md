@@ -9,7 +9,14 @@
 ## Highlights
 
 - **Synchronized Multimodal Moment Detection (No Fake RAG)** — Combines word-level speech transcription, baseline-relative audio reaction contrast (never loudness-only), FFmpeg scene-cut & gameplay motion intensity, and face-cam corner detection to surface the strongest moments with clear, human-readable explanations.
-- **Real-Time Live Stream Ingest & Live Chat Velocity Spikes** — Paste an ongoing YouTube or Twitch live URL or direct `.m3u8` HLS manifest. ClipForge uses commercial-grade **Audio-First Ingestion** (~1MB/min) + **Live Chat Velocity (MPS & Hype Keyword Density)** tracking to find clutch moments in real time, and selectively slices *only* the peak 30–60s video chunk without downloading multi-gigabyte streams!
+- **Real-Time Live Stream Ingest & Live Chat Velocity Spikes** — Paste an ongoing YouTube or Twitch live URL or direct `.m3u8` HLS manifest. ClipForge uses commercial-grade **Audio-First Ingestion** (~1MB/min) + **Live Chat Velocity (MPS & Hype Keyword Density)** tracking to find clutch moments in real time, and selectively slices *only* a synchronized 60s high-res buffer without downloading multi-gigabyte streams!
+- **Dual HLS Manifest Muxing & 100% Synced Audio** — Seamlessly resolves and muxes separate video-only (`sgovp`) and audio-only (`sgoap`) live HLS manifests with `-c:v copy -c:a aac -b:a 192k`. Zero audio drift, crystal-clear streamer voice, and full gameplay sound in both player preview and rendered 9:16 exports.
+- **Multi-Moment Multimodal AI Scoring** — Extracts **3 to 5 distinct highlight candidates** from every captured stream window. Ranks moments as `Selected` (top clutch plays) and `Suggested`, with transparent multi-signal score breakdowns:
+  - 💬 **Live Chat Velocity** (Messages-Per-Second spikes & hype keyword density)
+  - 🎙️ **Vocal Excitement** (relative contrast & silence-to-burst)
+  - 🎮 **Gameplay Motion Intensity** (action peaks & camera panning)
+  - 🎬 **Scene Transitions** (scene cuts & visual shifts)
+  - 🎯 **Face-Cam Framing** (corner webcam detection for split-screen 9:16)
 - **Context-Preserving Clip Boundaries** — Automatically preserves lead-in setup and complete post-peak reactions/punchlines instead of cutting mid-sentence.
 - **100% Free Speech-to-Text Support** — Works with **Local Offline Whisper (`whisper.cpp`)** on Apple Silicon/CPU, **Groq Free Tier (`whisper-large-v3-turbo`)**, any self-hosted Whisper server, optional OpenAI Whisper, or zero-key manual caption mode (never invents words when confidence is low).
 - **Interactive 9:16 Review & Editing Studio** — Playable HTTP `Range`-streaming preview player, timeline event markers (audio reactions, gameplay motion, scene cuts), start/end boundary trimmers, editable synced captions with low-confidence review flags, and configurable vertical layouts (`Split Cam Top`, `Face-Cam PiP`, `Gameplay Focus`).
@@ -52,30 +59,34 @@ queued ──▶ uploading ──▶ analyzing ───────┐
 live_monitoring ──────────────────────────┘
 ```
 
-#### Real-Time Ongoing Live Stream Clipping
+#### Real-Time Ongoing Live Stream Clipping Pipeline
 
 When pasting an active live stream, ClipForge does not download multi-gigabyte video files:
 
 ```text
 [ Ongoing Stream / YouTube Live / Twitch / .m3u8 ]
        │
-       ▼ (Step A: Rolling Live Manifest Extraction)
+       ▼ (Step A: Dual Manifest Resolution)
 [ HLS Master Manifest (.m3u8) ]
-       ├── Video Stream (.ts / fMP4 chunks)  ───► (Ignored initially to save bandwidth)
-       └── Audio Stream (64–128kbps AAC/Opus) ──► (Step B: Pulled in real-time at ~1MB/min)
-                                                       │
-                                                       ▼
-                                            [ Streaming Whisper / Deepgram / whisper.cpp ]
-                                            [ PCM Audio Excitement / Pitch Analysis ]
-                                            [ Step C: Live Chat Velocity Spikes (MPS) ]
-                                                       │
-                                                       ▼
-                                     (Clutch Moment Detected: e.g. 14:10–14:55)
-                                                       │
-                                                       ▼ (Step D: Selective Video Slicing)
-                                            [ Fetch ONLY 45s High-Res Video ]
-                                            [ Face-Cam Detection & 9:16 Vertical Crop ]
-                                            [ Instant MP4 Ready in Studio ]
+       ├── Video Manifest (sgovp / 1080p60 chunks)
+       └── Audio Manifest (sgoap / 64–128kbps AAC/Opus) ──► (Step B: Pulled in real-time at ~1MB/min)
+                                                                 │
+                                                                 ▼
+                                                      [ Local whisper.cpp / Groq Word Timestamps ]
+                                                      [ PCM Audio Dynamics & Silence-to-Burst ]
+                                                      [ Step C: Live Chat Velocity Spikes (MPS) ]
+                                                                 │
+                                                                 ▼
+                                               (Excitement & Hype Peak Detected)
+                                                                 │
+                                                                 ▼ (Step D: Selective Video Slicing)
+                                                      [ Fetch 60s High-Res 1080p60 Buffer ]
+                                                      [ Mux Synced Stereo AAC Audio @ 192kbps ]
+                                                      [ Gameplay Motion & Scene Transitions ]
+                                                      [ Corner Face-Cam Detection & Framing ]
+                                                                 │
+                                                                 ▼
+                                             [ 3–5 Ranked Highlight Moments Ready in Studio ]
 ```
 
 - All job progress, transcript segments, scene events, candidate clips, and render exports persist in PostgreSQL — you can refresh or close the tab and resume at any time.
@@ -222,6 +233,7 @@ pnpm db:migrate:deploy # Apply Prisma PostgreSQL migrations
 
 ## Source-Access Policy & Limitations
 
-- **No unauthorized YouTube downloads:** Direct video/audio scraping or `yt-dlp` downloading is intentionally prohibited. Users must upload their own authorized recordings or VOD files.
-- **No automatic social publishing:** Exports generate downloadable platform-ready 1080×1920 MP4 files for manual upload to YouTube Shorts, TikTok, or Instagram Reels.
+- **Commercial-Grade Live Manifest Slicing:** For active live streams, ClipForge connects to rolling HLS manifests (`.m3u8`) via standard HTTP chunk retrieval, extracting low-bitrate audio and selective 60s video buffers upon peak excitement without scraping or hoarding multi-gigabyte recordings.
+- **Pre-recorded VODs require authorized uploads:** Direct scraping of full archived YouTube VODs is prohibited. Content creators upload their own high-res gameplay recordings or stream files.
+- **No automatic social publishing:** Exports generate downloadable platform-ready 1080×1920 MP4 files for manual review and upload to YouTube Shorts, TikTok, or Instagram Reels.
 - **Heuristic face-cam detection:** Automatically detects common landscape streamer corner webcams, with full per-clip manual corner presets and coordinate overrides in the studio UI.
