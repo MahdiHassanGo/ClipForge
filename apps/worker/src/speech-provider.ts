@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
 import type {
   AudioTimelinePoint,
@@ -221,12 +222,25 @@ export class OpenAICompatibleWhisperProvider implements SpeechRecognitionProvide
  */
 export class LocalWhisperCppSpeechProvider implements SpeechRecognitionProvider {
   readonly name = "local_whisper_cpp";
+  readonly modelTag: string;
   private readonly binaryPath: string;
   private readonly modelPath: string;
+  private readonly prompt: string;
+  private readonly threads: number;
 
-  constructor(config: { binaryPath?: string; modelPath: string }) {
+  constructor(config: {
+    binaryPath?: string;
+    modelPath: string;
+    prompt?: string;
+    threads?: number;
+  }) {
     this.binaryPath = config.binaryPath?.trim() || "whisper-cli";
     this.modelPath = config.modelPath;
+    this.modelTag = path.basename(this.modelPath).replace(/^ggml-|\.bin$/g, "");
+    this.prompt =
+      config.prompt?.trim() ||
+      "Gaming livestream commentary, gameplay action, clutch reaction, GTA gameplay, streamer callouts, Vice City, Jason, Lucia";
+    this.threads = config.threads && config.threads > 0 ? config.threads : 6;
   }
 
   async transcribe(params: {
@@ -240,6 +254,8 @@ export class LocalWhisperCppSpeechProvider implements SpeechRecognitionProvider 
     const outputPrefix = path.join(dir, "whisper_out");
     const jsonPath = `${outputPrefix}.json`;
 
+    // Dynamic audio preprocessing: Bandpass vocal filter + loudnorm normalization
+    // Eliminates sub-bass rumble (car engines, explosions) and screeching while normalizing human voices
     await runExecFile(
       resolveFfmpegPath(),
       [
@@ -250,7 +266,7 @@ export class LocalWhisperCppSpeechProvider implements SpeechRecognitionProvider 
         params.audioFilePath,
         "-vn",
         "-af",
-        "highpass=f=100,lowpass=f=4200,volume=1.2",
+        "highpass=f=120,lowpass=f=3800,loudnorm=I=-16:TP=-1.5:LRA=11",
         "-ac",
         "1",
         "-ar",
@@ -262,6 +278,7 @@ export class LocalWhisperCppSpeechProvider implements SpeechRecognitionProvider 
       { timeoutMs: 180_000 },
     );
 
+    // Fine-tuned whisper-cli parameters for Apple Silicon Metal & Gaming Accuracy
     const args = [
       "-m",
       this.modelPath,
@@ -271,10 +288,20 @@ export class LocalWhisperCppSpeechProvider implements SpeechRecognitionProvider 
       "-of",
       outputPrefix,
       "--no-prints",
-      "-sow",
-      "-sns",
+      "-sow", // Split on words, never cut words mid-token
+      "-sns", // Suppress non-speech hallucination tokens during background music
+      "-bo",
+      "5", // Best of 5 beam candidates
+      "-bs",
+      "5", // Beam size 5 for deep search
+      "-t",
+      String(this.threads), // Optimal thread count for Apple M4
+      "-mc",
+      "128", // Limit context window to prevent repetitive hallucination loops
+      "-wt",
+      "0.01", // Word timestamp threshold
       "--prompt",
-      "Gaming livestream commentary, gameplay action, clutch reaction, GTA gameplay",
+      this.prompt,
     ];
     if (params.languageHint && params.languageHint !== "auto") {
       args.push("-l", params.languageHint);
@@ -432,18 +459,79 @@ export class HonestFallbackSpeechProvider implements SpeechRecognitionProvider {
   }
 }
 
+/**
+ * Resolves local whisper.cpp model by alias or path, with smart auto-selection.
+ * Priority when 'auto': large-v3-turbo > large-v3 > medium.en > medium > small.en > small > base.en > base
+ */
+export function resolveLocalWhisperModelPath(
+  env: Record<string, string | undefined>,
+  baseDir: string,
+): string | undefined {
+  const modelsDir = path.resolve(baseDir, "models");
+
+  // 1. Explicit path in LOCAL_WHISPER_MODEL_PATH
+  const rawPath = env.LOCAL_WHISPER_MODEL_PATH?.trim();
+  if (rawPath) {
+    return path.isAbsolute(rawPath) ? rawPath : path.resolve(baseDir, rawPath);
+  }
+
+  // 2. Named alias in LOCAL_WHISPER_MODEL (e.g. "large", "large-turbo", "medium", "small", "base")
+  const named = (env.LOCAL_WHISPER_MODEL ?? env.WHISPER_MODEL)?.toLowerCase().trim();
+  if (named && named !== "auto") {
+    const aliasMap: Record<string, string> = {
+      base: "ggml-base.en.bin",
+      "base.en": "ggml-base.en.bin",
+      small: "ggml-small.en.bin",
+      "small.en": "ggml-small.en.bin",
+      medium: "ggml-medium.en.bin",
+      "medium.en": "ggml-medium.en.bin",
+      large: "ggml-large-v3-turbo.bin",
+      "large-turbo": "ggml-large-v3-turbo.bin",
+      "large-v3-turbo": "ggml-large-v3-turbo.bin",
+      "large-v3": "ggml-large-v3.bin",
+    };
+    const target = aliasMap[named] ?? (named.endsWith(".bin") ? named : `ggml-${named}.bin`);
+    const p = path.join(modelsDir, target);
+    try {
+      if (fsSync.existsSync(p)) return p;
+    } catch {
+      // ignore
+    }
+  }
+
+  // 3. Auto-detect highest quality offline model present in models/ directory
+  const priorityList = [
+    "ggml-large-v3-turbo.bin",
+    "ggml-large-v3.bin",
+    "ggml-medium.en.bin",
+    "ggml-medium.bin",
+    "ggml-small.en.bin",
+    "ggml-small.bin",
+    "ggml-base.en.bin",
+    "ggml-base.bin",
+  ];
+
+  for (const file of priorityList) {
+    const candidate = path.join(modelsDir, file);
+    try {
+      if (fsSync.existsSync(candidate)) {
+        return candidate;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return undefined;
+}
+
 export function createSpeechRecognitionProvider(
   env: Record<string, string | undefined> = process.env,
   baseDir: string = process.cwd(),
 ): SpeechRecognitionProvider {
   const mode = (env.STT_PROVIDER ?? "auto").toLowerCase().trim();
   const groqKey = env.GROQ_API_KEY?.trim();
-  const rawLocalModel = env.LOCAL_WHISPER_MODEL_PATH?.trim();
-  const localModel = rawLocalModel
-    ? path.isAbsolute(rawLocalModel)
-      ? rawLocalModel
-      : path.resolve(baseDir, rawLocalModel)
-    : undefined;
+  const localModel = resolveLocalWhisperModelPath(env, baseDir);
   const customBaseUrl = env.STT_BASE_URL?.trim();
   const openaiKey = env.OPENAI_API_KEY?.trim();
 
@@ -464,9 +552,13 @@ export function createSpeechRecognitionProvider(
 
   if (mode === "local_whisper" || (mode === "auto" && localModel)) {
     if (localModel) {
+      const threads = Number(env.WHISPER_THREADS) || 6;
+      const prompt = env.WHISPER_PROMPT?.trim();
       return new LocalWhisperCppSpeechProvider({
         binaryPath: env.LOCAL_WHISPER_BIN?.trim() || "whisper-cli",
         modelPath: localModel,
+        prompt,
+        threads,
       });
     }
   }

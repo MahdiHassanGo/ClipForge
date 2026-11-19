@@ -142,16 +142,18 @@ openssl rand -hex 32
 
 With `STT_PROVIDER="auto"` (default), pick whichever option fits best:
 
-- **Option A — Local Offline Whisper (`whisper.cpp`, 100% Free & Unlimited)**
+- **Option A — Local Offline Whisper (`whisper.cpp`, 100% Free & Unlimited on Apple Silicon)**
+  Install whisper-cli via Homebrew and download the model suite:
   ```bash
   brew install whisper-cpp
-  mkdir -p models
-  curl -L -o models/ggml-base.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+  pnpm download:models
   ```
-  Then set in `.env`:
+  This downloads `small.en` (465MB), `medium.en` (1.4GB), and `large-v3-turbo` (1.5GB) into `./models`.
+  Then configure in `.env`:
   ```env
   LOCAL_WHISPER_BIN="whisper-cli"
-  LOCAL_WHISPER_MODEL_PATH="./models/ggml-base.en.bin"
+  LOCAL_WHISPER_MODEL="auto"   # "auto" (picks best available), "large-v3-turbo", "medium.en", or "small.en"
+  WHISPER_THREADS="6"          # Optimized for Apple Silicon M-series performance cores
   ```
 
 - **Option B — Groq Free Whisper (`whisper-large-v3-turbo`, No Credit Card)**

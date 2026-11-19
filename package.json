@@ -17,7 +17,8 @@
     "db:generate": "pnpm --filter @clipforge/db generate",
     "db:migrate": "pnpm --filter @clipforge/db migrate",
     "db:migrate:deploy": "pnpm --filter @clipforge/db migrate:deploy",
-    "db:push": "pnpm --filter @clipforge/db push"
+    "db:push": "pnpm --filter @clipforge/db push",
+    "download:models": "bash scripts/download-models.sh"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
