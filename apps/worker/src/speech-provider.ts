@@ -107,6 +107,8 @@ export class OpenAICompatibleWhisperProvider implements SpeechRecognitionProvide
           "-i",
           params.audioFilePath,
           "-vn",
+          "-af",
+          "highpass=f=100,lowpass=f=4200,volume=1.2",
           "-ac",
           "1",
           "-ar",
@@ -131,6 +133,10 @@ export class OpenAICompatibleWhisperProvider implements SpeechRecognitionProvide
       form.append("response_format", "verbose_json");
       form.append("timestamp_granularities[]", "word");
       form.append("timestamp_granularities[]", "segment");
+      form.append(
+        "prompt",
+        "Gaming livestream commentary, gameplay action, clutch reaction, GTA gameplay",
+      );
       if (params.languageHint && params.languageHint !== "auto") {
         form.append("language", params.languageHint);
       }
@@ -243,6 +249,8 @@ export class LocalWhisperCppSpeechProvider implements SpeechRecognitionProvider 
         "-i",
         params.audioFilePath,
         "-vn",
+        "-af",
+        "highpass=f=100,lowpass=f=4200,volume=1.2",
         "-ac",
         "1",
         "-ar",
@@ -263,6 +271,10 @@ export class LocalWhisperCppSpeechProvider implements SpeechRecognitionProvider 
       "-of",
       outputPrefix,
       "--no-prints",
+      "-sow",
+      "-sns",
+      "--prompt",
+      "Gaming livestream commentary, gameplay action, clutch reaction, GTA gameplay",
     ];
     if (params.languageHint && params.languageHint !== "auto") {
       args.push("-l", params.languageHint);
