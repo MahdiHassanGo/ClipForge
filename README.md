@@ -9,6 +9,7 @@
 ## Highlights
 
 - **Synchronized Multimodal Moment Detection (No Fake RAG)** — Combines word-level speech transcription, baseline-relative audio reaction contrast (never loudness-only), FFmpeg scene-cut & gameplay motion intensity, and face-cam corner detection to surface the strongest moments with clear, human-readable explanations.
+- **Real-Time Live Stream Ingest & Live Chat Velocity Spikes** — Paste an ongoing YouTube or Twitch live URL or direct `.m3u8` HLS manifest. ClipForge uses commercial-grade **Audio-First Ingestion** (~1MB/min) + **Live Chat Velocity (MPS & Hype Keyword Density)** tracking to find clutch moments in real time, and selectively slices *only* the peak 30–60s video chunk without downloading multi-gigabyte streams!
 - **Context-Preserving Clip Boundaries** — Automatically preserves lead-in setup and complete post-peak reactions/punchlines instead of cutting mid-sentence.
 - **100% Free Speech-to-Text Support** — Works with **Local Offline Whisper (`whisper.cpp`)** on Apple Silicon/CPU, **Groq Free Tier (`whisper-large-v3-turbo`)**, any self-hosted Whisper server, optional OpenAI Whisper, or zero-key manual caption mode (never invents words when confidence is low).
 - **Interactive 9:16 Review & Editing Studio** — Playable HTTP `Range`-streaming preview player, timeline event markers (audio reactions, gameplay motion, scene cuts), start/end boundary trimmers, editable synced captions with low-confidence review flags, and configurable vertical layouts (`Split Cam Top`, `Face-Cam PiP`, `Gameplay Focus`).
@@ -38,12 +39,43 @@ ClipForge/
 └── .env.example       # Documented environment variables (placeholders only)
 ```
 
-### Job Lifecycle
+### Job Lifecycle & Live Ingestion Pipeline
 
 ```text
-queued ──▶ uploading ──▶ analyzing ──▶ candidates_ready ──▶ rendering ──▶ complete
-  │            │             │                                   │
-  └────────────┴─────────────┴──────────────▶ failed ◀───────────┘
+(Pre-recorded VOD)
+queued ──▶ uploading ──▶ analyzing ───────┐
+  │            │             │            ▼
+  │            │             │   candidates_ready ──▶ rendering ──▶ complete
+  │            │             │            ▲                 │
+  ▼            ▼             ▼            │                 ▼
+(Ongoing Live Stream)                     │               failed
+live_monitoring ──────────────────────────┘
+```
+
+#### Real-Time Ongoing Live Stream Clipping
+
+When pasting an active live stream, ClipForge does not download multi-gigabyte video files:
+
+```text
+[ Ongoing Stream / YouTube Live / Twitch / .m3u8 ]
+       │
+       ▼ (Step A: Rolling Live Manifest Extraction)
+[ HLS Master Manifest (.m3u8) ]
+       ├── Video Stream (.ts / fMP4 chunks)  ───► (Ignored initially to save bandwidth)
+       └── Audio Stream (64–128kbps AAC/Opus) ──► (Step B: Pulled in real-time at ~1MB/min)
+                                                       │
+                                                       ▼
+                                            [ Streaming Whisper / Deepgram / whisper.cpp ]
+                                            [ PCM Audio Excitement / Pitch Analysis ]
+                                            [ Step C: Live Chat Velocity Spikes (MPS) ]
+                                                       │
+                                                       ▼
+                                     (Clutch Moment Detected: e.g. 14:10–14:55)
+                                                       │
+                                                       ▼ (Step D: Selective Video Slicing)
+                                            [ Fetch ONLY 45s High-Res Video ]
+                                            [ Face-Cam Detection & 9:16 Vertical Crop ]
+                                            [ Instant MP4 Ready in Studio ]
 ```
 
 - All job progress, transcript segments, scene events, candidate clips, and render exports persist in PostgreSQL — you can refresh or close the tab and resume at any time.

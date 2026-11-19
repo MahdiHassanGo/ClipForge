@@ -76,6 +76,7 @@ const CORNER_PRESETS: Record<
 };
 
 function getStepIndex(status: JobStatus): number {
+  if (status === "live_monitoring") return 2;
   const idx = PIPELINE_STEPS.findIndex((s) => s.key === status);
   return idx >= 0 ? idx : 0;
 }
@@ -403,8 +404,8 @@ export function JobWorkspaceClient({
   const currentStepIdx = getStepIndex(job.status);
 
   const needsUpload =
-    job.status === "queued" ||
-    (job.status === "failed" && !job.sourceStorageKey);
+    !job.isLiveStream &&
+    (job.status === "queued" || (job.status === "failed" && !job.sourceStorageKey));
 
   return (
     <div className="min-h-screen pb-16">
@@ -421,8 +422,13 @@ export function JobWorkspaceClient({
               <ArrowLeft className="h-3.5 w-3.5" />
               Back to all projects
             </Link>
-            <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
-              {job.youtubeTitle ?? `YouTube Video (${job.youtubeVideoId})`}
+            <h1 className="flex flex-wrap items-center gap-2 text-xl font-bold tracking-tight sm:text-2xl">
+              <span>{job.youtubeTitle ?? `YouTube Video (${job.youtubeVideoId})`}</span>
+              {job.isLiveStream && (
+                <Badge variant="accent" className="text-xs">
+                  🔴 Live HLS Ingest
+                </Badge>
+              )}
             </h1>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               {job.youtubeChannel && <span>{job.youtubeChannel}</span>}
@@ -496,19 +502,42 @@ export function JobWorkspaceClient({
               })}
             </div>
 
-            {(job.status === "uploading" || job.status === "analyzing") && (
+            {(job.status === "uploading" || job.status === "analyzing" || job.status === "live_monitoring") && (
               <div className="mt-4 space-y-2 rounded-lg border border-primary/25 bg-primary/5 p-3.5">
                 <div className="flex items-center justify-between text-xs">
                   <span className="flex items-center gap-2 font-medium text-primary">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    {job.progressMessage ?? "Processing in background worker..."}
+                    {job.progressMessage ?? (job.status === "live_monitoring" ? "Monitoring live stream in real time..." : "Processing in background worker...")}
                   </span>
                   <span className="font-mono text-muted-foreground">{job.progressPct}%</span>
                 </div>
                 <Progress value={job.progressPct} />
                 <p className="text-[11px] text-muted-foreground">
-                  Processing runs asynchronously in the ClipForge background worker. You can close this tab or refresh without losing progress.
+                  {job.status === "live_monitoring"
+                    ? "Live Ingest Pipeline Active: Pulling rolling low-bitrate audio chunks, polling live chat velocity (MPS & hype density), and selectively slicing high-res video upon peak excitement."
+                    : "Processing runs asynchronously in the ClipForge background worker. You can close this tab or refresh without losing progress."}
                 </p>
+              </div>
+            )}
+
+            {job.isLiveStream && job.status === "live_monitoring" && (
+              <div className="mt-3 grid gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-100 sm:grid-cols-4">
+                <div className="space-y-1">
+                  <p className="font-semibold text-amber-300">Step A: HLS Manifest</p>
+                  <p className="text-[11px] text-amber-200/80">Rolling .m3u8 manifest resolved</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="font-semibold text-amber-300">Step B: Audio-First</p>
+                  <p className="text-[11px] text-amber-200/80">Pulling ~1MB/min audio stream</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="font-semibold text-amber-300">Step C: Chat Velocity</p>
+                  <p className="text-[11px] text-amber-200/80">Tracking messages/sec & hype spikes</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="font-semibold text-amber-300">Step D: Selective Slice</p>
+                  <p className="text-[11px] text-amber-200/80">Downloading only 30–60s peak video</p>
+                </div>
               </div>
             )}
 
@@ -687,11 +716,16 @@ export function JobWorkspaceClient({
                       </p>
 
                       {clip.signalBreakdown && (
-                        <div className="mt-2.5 grid grid-cols-4 gap-1.5 text-[10px] text-muted-foreground">
+                        <div className={`mt-2.5 grid gap-1.5 text-[10px] text-muted-foreground ${
+                          clip.signalBreakdown.chatVelocityScore !== undefined ? "grid-cols-5" : "grid-cols-4"
+                        }`}>
                           <SignalMiniBar label="Speech" value={clip.signalBreakdown.speechScore} />
                           <SignalMiniBar label="Reaction" value={clip.signalBreakdown.reactionScore} />
                           <SignalMiniBar label="Motion" value={clip.signalBreakdown.motionScore} />
                           <SignalMiniBar label="Scene" value={clip.signalBreakdown.sceneScore} />
+                          {clip.signalBreakdown.chatVelocityScore !== undefined && (
+                            <SignalMiniBar label="Chat Hype" value={clip.signalBreakdown.chatVelocityScore} />
+                          )}
                         </div>
                       )}
 

@@ -31,6 +31,7 @@ interface SecondSignal {
   reactionScore: number;
   motionScore: number;
   sceneScore: number;
+  chatScore: number;
   silenceToBurst: boolean;
   matchedLabels: string[];
 }
@@ -67,6 +68,7 @@ export class DefaultClipScoringProvider implements ClipScoringProvider {
       reactionScore: 0,
       motionScore: 0,
       sceneScore: 0,
+      chatScore: 0,
       silenceToBurst: false,
       matchedLabels: [],
     }));
@@ -91,17 +93,29 @@ export class DefaultClipScoringProvider implements ClipScoringProvider {
     }
 
     for (const ev of input.sceneEvents) {
-      const idx = Math.min(totalSeconds - 1, Math.max(0, Math.floor(ev.timestampSec)));
-      const bin = timeline[idx]!;
-      if (ev.type === "scene_cut") {
-        bin.sceneScore = Math.max(bin.sceneScore, clamp01(ev.score));
-      } else if (ev.type === "motion_burst") {
-        bin.motionScore = Math.max(bin.motionScore, clamp01(ev.score));
-      } else if (ev.type === "audio_reaction" || ev.type === "silence_to_burst") {
-        bin.reactionScore = Math.max(bin.reactionScore, clamp01(ev.score));
-        if (ev.type === "silence_to_burst") bin.silenceToBurst = true;
-      } else if (ev.type === "speech_peak") {
-        bin.speechScore = Math.max(bin.speechScore, clamp01(ev.score));
+      const startIdx = Math.min(totalSeconds - 1, Math.max(0, Math.floor(ev.timestampSec)));
+      const endIdx =
+        ev.endSec != null
+          ? Math.min(totalSeconds - 1, Math.max(startIdx, Math.floor(ev.endSec)))
+          : Math.min(totalSeconds - 1, startIdx + (ev.type === "chat_velocity_spike" ? 5 : 0));
+
+      for (let i = startIdx; i <= endIdx; i++) {
+        const bin = timeline[i]!;
+        if (ev.type === "scene_cut") {
+          bin.sceneScore = Math.max(bin.sceneScore, clamp01(ev.score));
+        } else if (ev.type === "motion_burst") {
+          bin.motionScore = Math.max(bin.motionScore, clamp01(ev.score));
+        } else if (ev.type === "audio_reaction" || ev.type === "silence_to_burst") {
+          bin.reactionScore = Math.max(bin.reactionScore, clamp01(ev.score));
+          if (ev.type === "silence_to_burst") bin.silenceToBurst = true;
+        } else if (ev.type === "speech_peak") {
+          bin.speechScore = Math.max(bin.speechScore, clamp01(ev.score));
+        } else if (ev.type === "chat_velocity_spike") {
+          bin.chatScore = Math.max(bin.chatScore, clamp01(ev.score));
+          if (!bin.matchedLabels.includes("live chat velocity spike")) {
+            bin.matchedLabels.push("live chat velocity spike");
+          }
+        }
       }
     }
 
@@ -131,7 +145,17 @@ export class DefaultClipScoringProvider implements ClipScoringProvider {
     }
 
     // 2. Compute per-second fused excitement score (explicitly multi-signal, never loudness-only)
+    const hasChatSignals = timeline.some((b) => b.chatScore > 0);
+
     const perSecondComposite = timeline.map((bin) => {
+      if (hasChatSignals) {
+        return (
+          bin.chatScore * 0.35 +
+          bin.reactionScore * 0.25 +
+          bin.motionScore * 0.20 +
+          bin.speechScore * 0.20
+        );
+      }
       if (hasRealTranscript) {
         return (
           bin.speechScore * 0.36 +
@@ -452,6 +476,7 @@ function computeWindowBreakdown(params: {
     reactionScore: round2(metricScore((s) => s.reactionScore)),
     motionScore: round2(metricScore((s) => s.motionScore)),
     sceneScore: round2(metricScore((s) => s.sceneScore)),
+    chatVelocityScore: round2(metricScore((s) => s.chatScore)),
     faceCamBonus: params.faceCamDetected ? 0.05 : 0,
     contextScore: round2(params.contextScore),
   };
@@ -541,6 +566,10 @@ function buildExplanation(params: {
     parts.push("active commentary matched with gameplay peak");
   }
 
+  if (params.windowLabels.includes("live chat velocity spike") || (params.breakdown.chatVelocityScore ?? 0) >= 0.45) {
+    parts.push("live chat messages-per-second hype surge");
+  }
+
   if (params.hasSilenceToBurst) {
     parts.push("sharp reaction burst following tense quiet buildup");
   } else if (params.breakdown.reactionScore >= 0.5) {
@@ -576,6 +605,9 @@ function suggestClipTitle(params: {
   breakdown: SignalBreakdown;
   hasSilenceToBurst: boolean;
 }): string {
+  if (params.windowLabels.includes("live chat velocity spike") || (params.breakdown.chatVelocityScore ?? 0) >= 0.5) {
+    return `Live Chat Hype Surge #${params.rank}`;
+  }
   if (params.windowLabels.includes("clutch play callout")) {
     return `Clutch Highlight #${params.rank}`;
   }

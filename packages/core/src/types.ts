@@ -1,5 +1,6 @@
 export type JobStatus =
   | "queued"
+  | "live_monitoring"
   | "uploading"
   | "analyzing"
   | "candidates_ready"
@@ -29,7 +30,8 @@ export type SceneEventType =
   | "motion_burst"
   | "audio_reaction"
   | "speech_peak"
-  | "silence_to_burst";
+  | "silence_to_burst"
+  | "chat_velocity_spike";
 
 export type CandidateStatus = "suggested" | "selected" | "discarded";
 
@@ -111,8 +113,24 @@ export interface SignalBreakdown {
   reactionScore: number;
   motionScore: number;
   sceneScore: number;
+  chatVelocityScore?: number;
   faceCamBonus: number;
   contextScore: number;
+}
+
+export interface ChatVelocityPoint {
+  second: number;
+  messagesPerSec: number;
+  hypeKeywordDensity: number;
+  spikeScore: number;
+}
+
+export interface LiveManifestResult {
+  isLive: boolean;
+  videoManifestUrl: string;
+  audioManifestUrl: string;
+  streamTitle?: string;
+  sourceType: "hls" | "youtube_live" | "twitch_live";
 }
 
 export interface AnalysisConfig {

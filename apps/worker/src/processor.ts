@@ -19,6 +19,7 @@ import { createSpeechRecognitionProvider } from "./speech-provider.js";
 import { FfmpegSceneDetectionProvider } from "./scene-provider.js";
 import { FfmpegFaceCamDetectionProvider } from "./facecam-provider.js";
 import { FfmpegVideoRendererProvider } from "./renderer-provider.js";
+import { LiveStreamProcessor } from "./live-stream-processor.js";
 
 const logger = createLogger("clipforge-worker");
 
@@ -34,6 +35,7 @@ export class ClipWorkerProcessor {
   private readonly faceCamProvider = new FfmpegFaceCamDetectionProvider();
   private readonly scoringProvider = new DefaultClipScoringProvider();
   private readonly rendererProvider = new FfmpegVideoRendererProvider();
+  private readonly liveStreamProcessor: LiveStreamProcessor;
 
   constructor(options: { repoRoot: string }) {
     this.repoRoot = options.repoRoot;
@@ -44,6 +46,10 @@ export class ClipWorkerProcessor {
       ? configuredTmp
       : path.resolve(options.repoRoot, configuredTmp);
     this.staleLockMs = Number(process.env.WORKER_STALE_LOCK_MS) || 600_000;
+    this.liveStreamProcessor = new LiveStreamProcessor({
+      repoRoot: options.repoRoot,
+      tempRoot: this.tempRoot,
+    });
   }
 
   async init(): Promise<void> {
@@ -309,6 +315,42 @@ export class ClipWorkerProcessor {
     }
 
     return true;
+  }
+
+  /**
+   * Claims and processes one pending live stream monitoring job if available.
+   * Extracts rolling live HLS manifest, pulls audio-first, monitors chat velocity spikes,
+   * and selectively slices peak video windows without downloading the full multi-GB live stream.
+   */
+  async processNextLiveStreamJob(): Promise<boolean> {
+    const staleThreshold = new Date(Date.now() - this.staleLockMs);
+
+    const candidate = await prisma.clipJob.findFirst({
+      where: {
+        status: "live_monitoring",
+        OR: [{ workerLockedAt: null }, { workerLockedAt: { lt: staleThreshold } }],
+      },
+      orderBy: { updatedAt: "asc" },
+    });
+
+    if (!candidate) return false;
+
+    // Atomic conditional lease acquisition
+    const claimed = await prisma.clipJob.updateMany({
+      where: {
+        id: candidate.id,
+        status: "live_monitoring",
+        OR: [{ workerLockedAt: null }, { workerLockedAt: { lt: staleThreshold } }],
+      },
+      data: {
+        workerLockedAt: new Date(),
+        workerId: this.workerId,
+      },
+    });
+
+    if (claimed.count === 0) return false;
+
+    return this.liveStreamProcessor.processLiveStreamJob(candidate.id, this.workerId);
   }
 
   /**

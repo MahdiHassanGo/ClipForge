@@ -6,14 +6,15 @@ import type { JobStatus, RenderStatus } from "./types.js";
  * with failed and cancelled states + deterministic retry transitions.
  */
 export const JOB_TRANSITIONS: Readonly<Record<JobStatus, readonly JobStatus[]>> = {
-  queued: ["uploading", "failed", "cancelled"],
+  queued: ["uploading", "live_monitoring", "failed", "cancelled"],
+  live_monitoring: ["candidates_ready", "failed", "cancelled"],
   uploading: ["analyzing", "failed", "cancelled"],
   analyzing: ["candidates_ready", "failed", "cancelled"],
-  candidates_ready: ["rendering", "analyzing", "cancelled"],
+  candidates_ready: ["rendering", "analyzing", "live_monitoring", "cancelled"],
   rendering: ["complete", "candidates_ready", "failed", "cancelled"],
   complete: ["rendering", "candidates_ready"],
-  failed: ["queued", "uploading", "analyzing", "rendering", "cancelled"],
-  cancelled: ["queued", "uploading", "analyzing"],
+  failed: ["queued", "live_monitoring", "uploading", "analyzing", "rendering", "cancelled"],
+  cancelled: ["queued", "live_monitoring", "uploading", "analyzing"],
 };
 
 export const RENDER_TRANSITIONS: Readonly<Record<RenderStatus, readonly RenderStatus[]>> = {
@@ -74,6 +75,7 @@ export function resolveJobRetryTarget(params: {
   failedFromStatus: JobStatus | null;
   hasSourceMedia: boolean;
   hasCandidates: boolean;
+  isLiveStream?: boolean;
   retryCount: number;
   maxRetries?: number;
 }): RetryResolution {
@@ -90,6 +92,13 @@ export function resolveJobRetryTarget(params: {
     return {
       allowed: false,
       reason: `Maximum retry limit (${maxRetries}) reached. Please inspect the error or create a new job.`,
+    };
+  }
+
+  if (params.isLiveStream) {
+    return {
+      allowed: true,
+      nextStatus: "live_monitoring",
     };
   }
 

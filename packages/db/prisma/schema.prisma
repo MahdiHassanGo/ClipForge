@@ -9,6 +9,7 @@ datasource db {
 
 enum JobStatus {
   queued
+  live_monitoring
   uploading
   analyzing
   candidates_ready
@@ -38,6 +39,7 @@ enum SceneEventType {
   audio_reaction
   speech_peak
   silence_to_burst
+  chat_velocity_spike
 }
 
 enum CandidateStatus {
@@ -50,6 +52,13 @@ enum LayoutMode {
   split_cam_top
   pip_overlay
   gameplay_focus
+}
+
+enum LiveSessionStatus {
+  waiting
+  live
+  ended
+  error
 }
 
 enum CaptionStyle {
@@ -83,6 +92,7 @@ model User {
   sessions      Session[]
   jobs          ClipJob[]
   renderExports RenderExport[]
+  liveSessions  LiveSession[]
 }
 
 model Session {
@@ -113,6 +123,12 @@ model ClipJob {
   youtubeStreamType   StreamType     @default(unknown)
   metadataSource      MetadataSource @default(none)
   metadataNotice      String?
+
+  // Live stream HLS & chat monitoring
+  isLiveStream         Boolean @default(false)
+  liveManifestUrl      String?
+  liveAudioManifestUrl String?
+  liveChatVelocityJson Json?
 
   // Authorized user media source
   sourceProvider      String  @default("authorized_upload")
@@ -147,11 +163,15 @@ model ClipJob {
   workerLockedAt DateTime?
   workerId       String?
 
+  liveSessionId  String?
+  liveChunkIndex Int?
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   completedAt DateTime?
 
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  liveSession        LiveSession?        @relation(fields: [liveSessionId], references: [id], onDelete: SetNull)
   transcriptSegments TranscriptSegment[]
   sceneEvents        SceneEvent[]
   candidates         CandidateClip[]
@@ -159,6 +179,35 @@ model ClipJob {
 
   @@index([userId, createdAt])
   @@index([status, workerLockedAt])
+  @@index([liveSessionId, liveChunkIndex])
+}
+
+model LiveSession {
+  id                  String            @id @default(cuid())
+  userId              String
+  title               String
+  status              LiveSessionStatus @default(waiting)
+  streamKeyHash       String            @unique
+  streamKeyLast4      String
+  chunkDurationSec    Int               @default(180)
+  youtubeUrl          String?
+  youtubeVideoId      String?
+  youtubeTitle        String?
+  youtubeThumbnailUrl String?
+  analysisConfigJson  Json?
+  chunksReceived      Int               @default(0)
+  errorMessage        String?
+  startedAt           DateTime?
+  lastChunkAt         DateTime?
+  endedAt             DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs ClipJob[]
+
+  @@index([userId, createdAt])
+  @@index([status])
 }
 
 model TranscriptSegment {

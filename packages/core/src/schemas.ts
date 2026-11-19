@@ -51,7 +51,10 @@ export const analysisConfigSchema = z
   );
 
 export const createJobSchema = z.object({
-  youtubeUrl: z.string().trim().min(1, "YouTube URL is required.").max(2048),
+  youtubeUrl: z.string().trim().min(1, "YouTube or Live Stream URL is required.").max(2048),
+  isLiveStream: z.boolean().optional().default(false),
+  liveManifestUrl: z.string().trim().url().optional(),
+  liveAudioManifestUrl: z.string().trim().url().optional(),
   analysisConfig: analysisConfigSchema.optional(),
 });
 

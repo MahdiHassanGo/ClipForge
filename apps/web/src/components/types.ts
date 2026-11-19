@@ -3,6 +3,7 @@ import type {
   CandidateStatus,
   CaptionCue,
   CaptionStyle,
+  ChatVelocityPoint,
   ExportPreset,
   FaceCamRegion,
   JobStatus,
@@ -109,6 +110,10 @@ export interface ClipJobSummaryDto {
   sourceFileName: string | null;
   sourceFileSizeBytes: number | null;
   mediaDurationSec: number | null;
+  isLiveStream?: boolean;
+  liveManifestUrl?: string | null;
+  liveAudioManifestUrl?: string | null;
+  liveChatVelocityJson?: ChatVelocityPoint[] | null;
   progressPct: number;
   progressMessage: string | null;
   errorCode: string | null;

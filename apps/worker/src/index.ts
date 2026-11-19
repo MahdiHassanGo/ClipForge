@@ -35,13 +35,14 @@ async function main() {
     try {
       const didAnalyze = await processor.processNextAnalysisJob();
       const didRender = await processor.processNextRenderExport();
+      const didLiveStream = await processor.processNextLiveStreamJob();
 
       if (Date.now() - lastCleanup > 30 * 60 * 1000) {
         await processor.cleanupStaleTempDirs();
         lastCleanup = Date.now();
       }
 
-      if (!didAnalyze && !didRender) {
+      if (!didAnalyze && !didRender && !didLiveStream) {
         await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
       }
     } catch (error) {

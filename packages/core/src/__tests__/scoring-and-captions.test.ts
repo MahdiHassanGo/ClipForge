@@ -172,4 +172,82 @@ describe("Candidate validation, multimodal scoring & synced captions", () => {
     expect(ass).toContain("PlayResY: 1920");
     expect(ass).toContain("Dialogue:");
   });
+
+  it("weights live chat velocity spikes and includes chatVelocityScore in signalBreakdown", () => {
+    const scorer = new DefaultClipScoringProvider();
+    const durationSec = 120;
+
+    const audioTimeline = Array.from({ length: durationSec }, (_, second) => ({
+      second,
+      rmsDb: -28,
+      peakDb: -18,
+      reactionScore: 0.2,
+      isSilenceToBurst: false,
+    }));
+
+    const motionTimeline = Array.from({ length: durationSec }, (_, second) => ({
+      second,
+      motionScore: 0.25,
+      sceneCut: false,
+    }));
+
+    // Chat velocity spike at 50s..60s
+    const sceneEvents = [
+      {
+        timestampSec: 52,
+        endSec: 58,
+        type: "chat_velocity_spike" as const,
+        score: 0.96,
+        metadata: {
+          messagesPerSec: 64,
+          hypeRatio: 0.42,
+          reason: "Chat surge (64.0 msg/s, 42% hype emotes/words)",
+        },
+      },
+    ];
+
+    const drafts = scorer.generateCandidates({
+      probe: {
+        durationSec,
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        hasAudio: true,
+        videoCodec: "h264",
+        audioCodec: "aac",
+      },
+      transcriptSegments: [
+        {
+          index: 0,
+          startSec: 48,
+          endSec: 56,
+          text: "Look at the chat going crazy right now!",
+          language: "en",
+          confidence: 0.95,
+          lowConfidence: false,
+          needsReview: false,
+          words: [],
+        },
+      ],
+      audioTimeline,
+      motionTimeline,
+      sceneEvents,
+      faceCam: { detected: false, region: null, method: "live_test" },
+      config: {
+        minClipSec: 15,
+        maxClipSec: 45,
+        targetClipSec: 30,
+        scoreThreshold: 0.3,
+        maxCandidates: 3,
+        captionLanguage: "en",
+      },
+    });
+
+    expect(drafts.length).toBeGreaterThan(0);
+    const top = drafts[0]!;
+    expect(top.startSec).toBeLessThanOrEqual(52);
+    expect(top.endSec).toBeGreaterThanOrEqual(58);
+    expect(top.signalBreakdown.chatVelocityScore).toBeGreaterThan(0.6);
+    expect(top.reason).toMatch(/chat|surge|hype/i);
+  });
 });

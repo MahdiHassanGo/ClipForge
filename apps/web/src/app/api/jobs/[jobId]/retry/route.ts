@@ -57,6 +57,7 @@ export async function POST(
       failedFromStatus: job.failedFromStatus,
       hasSourceMedia: Boolean(job.sourceStorageKey),
       hasCandidates: job._count.candidates > 0,
+      isLiveStream: Boolean(job.isLiveStream),
       retryCount: job.retryCount,
     });
 

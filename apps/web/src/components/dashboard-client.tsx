@@ -66,6 +66,8 @@ function jobStatusBadge(status: JobStatus): {
   switch (status) {
     case "queued":
       return { label: "Awaiting Upload", variant: "warning" };
+    case "live_monitoring":
+      return { label: "Live Monitoring", variant: "accent" };
     case "uploading":
       return { label: "Uploading", variant: "default" };
     case "analyzing":
@@ -100,6 +102,8 @@ export function DashboardClient({
   const [inspected, setInspected] = useState<{
     metadata: YouTubeMetadataResult;
     ingestion: { providerName: string; requiresUserUpload: boolean; reason: string };
+    isLiveStream?: boolean;
+    canLiveIngest?: boolean;
   } | null>(null);
 
   const [showSettings, setShowSettings] = useState(false);
@@ -171,6 +175,8 @@ export function DashboardClient({
       setInspected({
         metadata: data.metadata,
         ingestion: data.ingestion,
+        isLiveStream: data.isLiveStream,
+        canLiveIngest: data.canLiveIngest,
       });
     } catch {
       setInspectError("Failed to inspect YouTube URL. Please check your connection.");
@@ -179,16 +185,18 @@ export function DashboardClient({
     }
   }
 
-  async function handleCreateProject() {
+  async function handleCreateProject(asLive = false) {
     if (!inspected) return;
     setCreating(true);
     setInspectError(null);
     try {
+      const isLive = asLive || Boolean(inspected.isLiveStream);
       const res = await fetch("/api/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           youtubeUrl: inspected.metadata.canonicalUrl,
+          isLiveStream: isLive,
           analysisConfig: {
             minClipSec: Number(minClipSec),
             maxClipSec: Number(maxClipSec),
@@ -413,39 +421,83 @@ export function DashboardClient({
                       )}
                     </div>
 
-                    <div className="rounded-lg border border-primary/25 bg-primary/10 p-3 text-xs leading-relaxed text-sky-100">
-                      <p className="font-medium text-primary">
-                        Authorized Source File Required ({inspected.ingestion.providerName})
-                      </p>
-                      <p className="mt-1 text-muted-foreground">
-                        {inspected.metadata.mediaAccessReason}
-                      </p>
-                      <p className="mt-1 text-muted-foreground/90">
-                        {inspected.metadata.notice}
-                      </p>
-                    </div>
+                    {inspected.isLiveStream || inspected.metadata.streamType === "live_stream" ? (
+                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs leading-relaxed text-amber-100">
+                        <p className="font-semibold text-amber-300">
+                          🔴 Live Stream Detected — Real-time Ingestion Enabled
+                        </p>
+                        <p className="mt-1 text-amber-200/90">
+                          {inspected.ingestion.reason}
+                        </p>
+                        <p className="mt-1 text-amber-200/75">
+                          ClipForge uses rolling HLS audio pulls (~1MB/min) + live chat velocity spikes (MPS) to pinpoint clutch moments, then selectively fetches only the 30–60s peak video slice.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-primary/25 bg-primary/10 p-3 text-xs leading-relaxed text-sky-100">
+                        <p className="font-medium text-primary">
+                          Authorized Source File Required ({inspected.ingestion.providerName})
+                        </p>
+                        <p className="mt-1 text-muted-foreground">
+                          {inspected.metadata.mediaAccessReason}
+                        </p>
+                        <p className="mt-1 text-muted-foreground/90">
+                          {inspected.metadata.notice}
+                        </p>
+                      </div>
+                    )}
 
                     <div className="flex flex-wrap items-center gap-3 pt-1">
-                      <Button onClick={handleCreateProject} disabled={creating}>
-                        {creating ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Creating Project...
-                          </>
-                        ) : (
-                          <>
-                            Continue to Authorized Video Upload
-                            <ArrowRight className="h-4 w-4" />
-                          </>
-                        )}
-                      </Button>
+                      {inspected.isLiveStream || inspected.metadata.streamType === "live_stream" ? (
+                        <>
+                          <Button
+                            onClick={() => handleCreateProject(true)}
+                            disabled={creating}
+                            className="bg-amber-500 font-semibold text-black hover:bg-amber-400"
+                          >
+                            {creating ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Starting Live Monitor...
+                              </>
+                            ) : (
+                              <>
+                                <Radio className="h-4 w-4" />
+                                Monitor Live Stream (No Upload Needed)
+                                <ArrowRight className="h-4 w-4" />
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            onClick={() => handleCreateProject(false)}
+                            disabled={creating}
+                          >
+                            Upload Local VOD/Recording Instead
+                          </Button>
+                        </>
+                      ) : (
+                        <Button onClick={() => handleCreateProject(false)} disabled={creating}>
+                          {creating ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Creating Project...
+                            </>
+                          ) : (
+                            <>
+                              Continue to Authorized Video Upload
+                              <ArrowRight className="h-4 w-4" />
+                            </>
+                          )}
+                        </Button>
+                      )}
                       <a
                         href={inspected.metadata.canonicalUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                       >
-                        Open on YouTube
+                        Open Stream / URL
                         <ExternalLink className="h-3 w-3" />
                       </a>
                     </div>
@@ -494,7 +546,8 @@ export function DashboardClient({
                 const inFlight =
                   job.status === "uploading" ||
                   job.status === "analyzing" ||
-                  job.status === "rendering";
+                  job.status === "rendering" ||
+                  job.status === "live_monitoring";
 
                 return (
                   <Card
@@ -519,6 +572,9 @@ export function DashboardClient({
                           <div className="flex flex-wrap items-center gap-1.5">
                             <Badge variant={badge.variant}>{badge.label}</Badge>
                             <Badge variant={stream.variant}>{stream.label}</Badge>
+                            {job.isLiveStream && (
+                              <Badge variant="accent">🔴 Live HLS</Badge>
+                            )}
                           </div>
 
                           <Link
@@ -531,7 +587,9 @@ export function DashboardClient({
                           <p className="truncate text-xs text-muted-foreground">
                             {job.sourceFileName
                               ? `File: ${job.sourceFileName}${job.mediaDurationSec ? ` · ${formatTime(job.mediaDurationSec)}` : ""}`
-                              : "No media uploaded yet"}
+                              : job.isLiveStream
+                                ? "Live HLS Stream (Audio-First + Chat Velocity)"
+                                : "No media uploaded yet"}
                           </p>
 
                           {inFlight && (
