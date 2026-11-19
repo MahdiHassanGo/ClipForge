@@ -8,6 +8,7 @@ import type {
   TranscriptSegmentData,
   TranscriptWord,
 } from "@clipforge/core";
+import { detectSttStatus, resolveLocalWhisperModelPath } from "@clipforge/core";
 import { resolveFfmpegPath, runExecFile } from "./ffmpeg-binaries.js";
 
 interface WhisperVerboseResponse {
@@ -459,71 +460,7 @@ export class HonestFallbackSpeechProvider implements SpeechRecognitionProvider {
   }
 }
 
-/**
- * Resolves local whisper.cpp model by alias or path, with smart auto-selection.
- * Priority when 'auto': large-v3-turbo > large-v3 > medium.en > medium > small.en > small > base.en > base
- */
-export function resolveLocalWhisperModelPath(
-  env: Record<string, string | undefined>,
-  baseDir: string,
-): string | undefined {
-  const modelsDir = path.resolve(baseDir, "models");
-
-  // 1. Explicit path in LOCAL_WHISPER_MODEL_PATH
-  const rawPath = env.LOCAL_WHISPER_MODEL_PATH?.trim();
-  if (rawPath) {
-    return path.isAbsolute(rawPath) ? rawPath : path.resolve(baseDir, rawPath);
-  }
-
-  // 2. Named alias in LOCAL_WHISPER_MODEL (e.g. "large", "large-turbo", "medium", "small", "base")
-  const named = (env.LOCAL_WHISPER_MODEL ?? env.WHISPER_MODEL)?.toLowerCase().trim();
-  if (named && named !== "auto") {
-    const aliasMap: Record<string, string> = {
-      base: "ggml-base.en.bin",
-      "base.en": "ggml-base.en.bin",
-      small: "ggml-small.en.bin",
-      "small.en": "ggml-small.en.bin",
-      medium: "ggml-medium.en.bin",
-      "medium.en": "ggml-medium.en.bin",
-      large: "ggml-large-v3-turbo.bin",
-      "large-turbo": "ggml-large-v3-turbo.bin",
-      "large-v3-turbo": "ggml-large-v3-turbo.bin",
-      "large-v3": "ggml-large-v3.bin",
-    };
-    const target = aliasMap[named] ?? (named.endsWith(".bin") ? named : `ggml-${named}.bin`);
-    const p = path.join(modelsDir, target);
-    try {
-      if (fsSync.existsSync(p)) return p;
-    } catch {
-      // ignore
-    }
-  }
-
-  // 3. Auto-detect highest quality offline model present in models/ directory
-  const priorityList = [
-    "ggml-large-v3-turbo.bin",
-    "ggml-large-v3.bin",
-    "ggml-medium.en.bin",
-    "ggml-medium.bin",
-    "ggml-small.en.bin",
-    "ggml-small.bin",
-    "ggml-base.en.bin",
-    "ggml-base.bin",
-  ];
-
-  for (const file of priorityList) {
-    const candidate = path.join(modelsDir, file);
-    try {
-      if (fsSync.existsSync(candidate)) {
-        return candidate;
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  return undefined;
-}
+export { resolveLocalWhisperModelPath, detectSttStatus };
 
 export function createSpeechRecognitionProvider(
   env: Record<string, string | undefined> = process.env,

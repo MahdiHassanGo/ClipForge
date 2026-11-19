@@ -28,8 +28,14 @@ describe("Speech recognition provider selection & honest fallback", () => {
   });
 
   it("prioritizes free Groq Whisper and local whisper.cpp cleanly in auto mode", () => {
+    // In an empty directory with no models or keys, auto falls back cleanly
+    expect(
+      createSpeechRecognitionProvider({ STT_PROVIDER: "auto" }, "/tmp/empty-stt-dir").name,
+    ).toBe("audio_activity_fallback_no_asr");
+
+    // When offline models exist in the repo, auto selects local whisper
     expect(createSpeechRecognitionProvider({ STT_PROVIDER: "auto" }).name).toBe(
-      "audio_activity_fallback_no_asr",
+      "local_whisper_cpp",
     );
 
     expect(

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   createObjectStorageFromEnv,
+  detectSttStatus,
   getDefaultAnalysisConfig,
   getMaxUploadBytes,
   type ObjectStorageProvider,
@@ -9,6 +10,7 @@ import {
 
 let cachedRepoRoot: string | null = null;
 let cachedStorage: ObjectStorageProvider | null = null;
+let lastEnvMtime = 0;
 
 export function getRepoRoot(): string {
   if (cachedRepoRoot) return cachedRepoRoot;
@@ -28,7 +30,43 @@ export function getRepoRoot(): string {
   return cachedRepoRoot;
 }
 
+/**
+ * Synchronize process.env with the monorepo root .env file whenever the file changes.
+ * This guarantees that when users add or modify keys in .env (e.g. GROQ_API_KEY, YOUTUBE_API_KEY),
+ * the changes take effect immediately without requiring a full Next.js server restart.
+ */
+export function syncEnvFile(): void {
+  try {
+    const root = getRepoRoot();
+    const envPath = path.join(root, ".env");
+    if (!fs.existsSync(envPath)) return;
+    const stats = fs.statSync(envPath);
+    if (stats.mtimeMs <= lastEnvMtime) return;
+    lastEnvMtime = stats.mtimeMs;
+
+    const content = fs.readFileSync(envPath, "utf-8");
+    for (const rawLine of content.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("#")) continue;
+      const eqIdx = line.indexOf("=");
+      if (eqIdx === -1) continue;
+      const key = line.slice(0, eqIdx).trim();
+      let val = line.slice(eqIdx + 1).trim();
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
+        val = val.slice(1, -1);
+      }
+      process.env[key] = val;
+    }
+  } catch {
+    // Ignore filesystem read errors in restricted sandbox environments
+  }
+}
+
 export function getObjectStorage(): ObjectStorageProvider {
+  syncEnvFile();
   if (!cachedStorage) {
     cachedStorage = createObjectStorageFromEnv(process.env, getRepoRoot());
   }
@@ -36,6 +74,7 @@ export function getObjectStorage(): ObjectStorageProvider {
 }
 
 export function getUploadTempDir(): string {
+  syncEnvFile();
   const configured = process.env.TEMP_WORK_DIR ?? "./tmp/clipforge-worker";
   const base = path.isAbsolute(configured)
     ? configured
@@ -52,29 +91,10 @@ export interface AppCapabilities {
   defaultAnalysisConfig: ReturnType<typeof getDefaultAnalysisConfig>;
 }
 
-function detectSttStatus(): { configured: boolean; label: string } {
-  const mode = (process.env.STT_PROVIDER ?? "auto").toLowerCase().trim();
-  if (mode === "none") return { configured: false, label: "Manual (Free)" };
-  if ((mode === "groq" || mode === "auto") && process.env.GROQ_API_KEY?.trim()) {
-    return { configured: true, label: "Groq Whisper (Free)" };
-  }
-  if (
-    (mode === "local_whisper" || mode === "auto") &&
-    process.env.LOCAL_WHISPER_MODEL_PATH?.trim()
-  ) {
-    return { configured: true, label: "Local Whisper (Offline)" };
-  }
-  if ((mode === "custom" || mode === "auto") && process.env.STT_BASE_URL?.trim()) {
-    return { configured: true, label: "Custom Whisper" };
-  }
-  if ((mode === "openai" || mode === "auto") && process.env.OPENAI_API_KEY?.trim()) {
-    return { configured: true, label: "OpenAI Whisper" };
-  }
-  return { configured: false, label: "Manual (No Key)" };
-}
-
 export function getAppCapabilities(): AppCapabilities {
-  const stt = detectSttStatus();
+  syncEnvFile();
+  const repoRoot = getRepoRoot();
+  const stt = detectSttStatus(process.env, repoRoot);
   return {
     youtubeApiConfigured: Boolean(process.env.YOUTUBE_API_KEY?.trim()),
     whisperConfigured: stt.configured,

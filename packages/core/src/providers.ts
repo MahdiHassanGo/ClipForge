@@ -1,3 +1,5 @@
+import fsSync from "node:fs";
+import path from "node:path";
 import type {
   AnalysisConfig,
   AudioTimelinePoint,
@@ -147,4 +149,141 @@ export interface RenderClipOutput {
 export interface VideoRendererProvider {
   readonly name: string;
   renderVerticalClip(request: RenderClipRequest): Promise<RenderClipOutput>;
+}
+
+/**
+ * Finds the models/ directory starting from startDir and walking upwards to repo root if needed.
+ */
+function findModelsDir(startDir: string): string {
+  let cur = path.resolve(startDir);
+  for (let i = 0; i < 5; i++) {
+    const candidate = path.join(cur, "models");
+    if (fsSync.existsSync(candidate)) {
+      return candidate;
+    }
+    if (fsSync.existsSync(path.join(cur, "pnpm-workspace.yaml"))) {
+      return candidate;
+    }
+    const parent = path.dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  return path.resolve(startDir, "models");
+}
+
+/**
+ * Resolves local whisper.cpp model by alias or path, with smart auto-selection.
+ * Priority when 'auto': large-v3-turbo > large-v3 > medium.en > medium > small.en > small > base.en > base
+ */
+export function resolveLocalWhisperModelPath(
+  env: Record<string, string | undefined>,
+  baseDir: string,
+): string | undefined {
+  // 1. Explicit path in LOCAL_WHISPER_MODEL_PATH
+  const rawPath = env.LOCAL_WHISPER_MODEL_PATH?.trim();
+  if (rawPath) {
+    return path.isAbsolute(rawPath) ? rawPath : path.resolve(baseDir, rawPath);
+  }
+
+  const modelsDir = findModelsDir(baseDir);
+
+  // 2. Named alias in LOCAL_WHISPER_MODEL (e.g. "large", "large-turbo", "medium", "small", "base")
+  const named = (env.LOCAL_WHISPER_MODEL ?? env.WHISPER_MODEL)?.toLowerCase().trim();
+  if (named && named !== "auto") {
+    const aliasMap: Record<string, string> = {
+      base: "ggml-base.en.bin",
+      "base.en": "ggml-base.en.bin",
+      small: "ggml-small.en.bin",
+      "small.en": "ggml-small.en.bin",
+      medium: "ggml-medium.en.bin",
+      "medium.en": "ggml-medium.en.bin",
+      large: "ggml-large-v3-turbo.bin",
+      "large-turbo": "ggml-large-v3-turbo.bin",
+      "large-v3-turbo": "ggml-large-v3-turbo.bin",
+      "large-v3": "ggml-large-v3.bin",
+    };
+    const target = aliasMap[named] ?? (named.endsWith(".bin") ? named : `ggml-${named}.bin`);
+    const p = path.join(modelsDir, target);
+    try {
+      if (fsSync.existsSync(p)) return p;
+    } catch {
+      // ignore
+    }
+  }
+
+  // 3. Auto-detect highest quality offline model present in models/ directory
+  const priorityList = [
+    "ggml-large-v3-turbo.bin",
+    "ggml-large-v3.bin",
+    "ggml-medium.en.bin",
+    "ggml-medium.bin",
+    "ggml-small.en.bin",
+    "ggml-small.bin",
+    "ggml-base.en.bin",
+    "ggml-base.bin",
+  ];
+
+  for (const file of priorityList) {
+    const candidate = path.join(modelsDir, file);
+    try {
+      if (fsSync.existsSync(candidate)) {
+        return candidate;
+      }
+    } catch {
+      // continue search
+    }
+  }
+
+  return undefined;
+}
+
+export interface SttStatusSummary {
+  configured: boolean;
+  label: string;
+  provider: "groq" | "local_whisper" | "custom" | "openai" | "none";
+  modelPath?: string;
+}
+
+export function detectSttStatus(
+  env: Record<string, string | undefined> = process.env,
+  repoRoot: string = process.cwd(),
+): SttStatusSummary {
+  const mode = (env.STT_PROVIDER ?? "auto").toLowerCase().trim();
+  if (mode === "none") return { configured: false, label: "Manual (Free)", provider: "none" };
+
+  const groqKey = env.GROQ_API_KEY?.trim();
+  const localModel = resolveLocalWhisperModelPath(env, repoRoot);
+  const customBaseUrl = env.STT_BASE_URL?.trim();
+  const openaiKey = env.OPENAI_API_KEY?.trim();
+
+  if (mode === "groq" || (mode === "auto" && groqKey)) {
+    if (groqKey) {
+      return { configured: true, label: "Groq Whisper (Free)", provider: "groq" };
+    }
+  }
+
+  if (mode === "local_whisper" || (mode === "auto" && localModel)) {
+    if (localModel) {
+      return {
+        configured: true,
+        label: "Local Whisper (Offline)",
+        provider: "local_whisper",
+        modelPath: localModel,
+      };
+    }
+  }
+
+  if (mode === "custom" || (mode === "auto" && customBaseUrl)) {
+    if (customBaseUrl) {
+      return { configured: true, label: "Custom Whisper", provider: "custom" };
+    }
+  }
+
+  if (mode === "openai" || (mode === "auto" && openaiKey)) {
+    if (openaiKey) {
+      return { configured: true, label: "OpenAI Whisper", provider: "openai" };
+    }
+  }
+
+  return { configured: false, label: "Manual (No Key)", provider: "none" };
 }
