@@ -4,24 +4,25 @@
 
 @layer base {
   :root {
-    --background: 224 30% 6%;
-    --foreground: 210 40% 96%;
-    --card: 224 25% 10%;
-    --card-foreground: 210 40% 96%;
-    --primary: 199 89% 48%;
-    --primary-foreground: 224 30% 6%;
-    --secondary: 222 22% 16%;
-    --secondary-foreground: 210 40% 96%;
-    --muted: 223 20% 15%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 262 83% 58%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 222 20% 19%;
-    --input: 222 20% 19%;
+    /* Unslop Graphite Dark — Broadcast Studio Palette */
+    --background: 240 4% 8%;       /* #141415 deep calm graphite */
+    --foreground: 0 0% 93%;        /* #ededed high-contrast off-white */
+    --card: 240 3% 10%;            /* #19191b solid flat surface */
+    --card-foreground: 0 0% 93%;
+    --primary: 199 89% 48%;        /* pro studio cyan */
+    --primary-foreground: 240 4% 8%;
+    --secondary: 240 3% 15%;       /* #232325 raised surface / input */
+    --secondary-foreground: 0 0% 90%;
+    --muted: 240 3% 13%;           /* #1f1f21 subtle surface */
+    --muted-foreground: 240 2% 64%;/* #a1a1a6 secondary text */
+    --accent: 201 96% 40%;         /* studio blue */
+    --accent-foreground: 0 0% 98%;
+    --destructive: 350 89% 60%;    /* semantic red */
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3% 18%;          /* 8% quiet hairline */
+    --input: 240 3% 18%;
     --ring: 199 89% 48%;
-    --radius: 0.65rem;
+    --radius: 0.5rem;              /* 8px radius standard */
   }
 
   * {
@@ -29,7 +30,12 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased selection:bg-primary/30 selection:text-foreground;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-foreground;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
+  }
+
+  /* Pro video studio tabular numbers helper */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
   }
 }

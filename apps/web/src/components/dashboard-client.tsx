@@ -264,88 +264,92 @@ export function DashboardClient({
         )}
 
         {/* Step 1: Paste YouTube URL & Inspect Metadata */}
-        <Card className="border-primary/25 bg-gradient-to-b from-card to-card/70">
-          <CardHeader>
+        <Card className="border-border/80 bg-card">
+          <CardHeader className="pb-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Link2 className="h-5 w-5 text-primary" />
-                  New Gaming Clip Project
+                <CardTitle className="flex items-center gap-2 text-base font-medium">
+                  <Link2 className="h-4 w-4 text-primary" />
+                  New Clip Project
                 </CardTitle>
-                <CardDescription className="mt-1">
-                  Step 1: Paste a YouTube video or stream URL to validate it and load permitted metadata.
+                <CardDescription className="mt-1 text-xs">
+                  Paste a YouTube video or livestream URL to inspect metadata and launch the clipping studio.
                 </CardDescription>
               </div>
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={() => setShowSettings((v) => !v)}
+                className="text-xs"
               >
-                <Settings2 className="h-4 w-4" />
+                <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
                 Clip Settings
               </Button>
             </div>
           </CardHeader>
 
-          <CardContent className="space-y-5">
-            <form onSubmit={handleInspect} className="flex flex-col gap-3 sm:flex-row">
+          <CardContent className="space-y-4">
+            <form onSubmit={handleInspect} className="flex flex-col gap-2.5 sm:flex-row">
               <Input
                 value={youtubeUrl}
                 onChange={(e) => setYoutubeUrl(e.target.value)}
-                placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/... or /live/..."
-                className="flex-1"
+                placeholder="https://www.youtube.com/watch?v=... or /live/..."
+                className="flex-1 text-xs sm:text-sm"
                 required
               />
-              <Button type="submit" disabled={inspecting} className="sm:w-44">
+              <Button type="submit" disabled={inspecting} className="sm:w-36 text-xs font-medium">
                 {inspecting ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     Inspecting...
                   </>
                 ) : (
                   <>
                     Inspect URL
-                    <ArrowRight className="h-4 w-4" />
+                    <ArrowRight className="h-3.5 w-3.5" />
                   </>
                 )}
               </Button>
             </form>
 
             {showSettings && (
-              <div className="grid gap-4 rounded-lg border border-border bg-secondary/30 p-4 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="grid gap-3 rounded-md border border-border/70 bg-secondary/20 p-3.5 sm:grid-cols-2 lg:grid-cols-5">
                 <label className="space-y-1 text-xs">
-                  <span className="text-muted-foreground">Min Clip (sec)</span>
+                  <span className="text-muted-foreground">Min Clip</span>
                   <Input
                     type="number"
                     min={5}
                     max={120}
                     value={minClipSec}
                     onChange={(e) => setMinClipSec(Number(e.target.value))}
+                    className="h-8 text-xs tabular-nums"
                   />
                 </label>
                 <label className="space-y-1 text-xs">
-                  <span className="text-muted-foreground">Target Clip (sec)</span>
+                  <span className="text-muted-foreground">Target Clip</span>
                   <Input
                     type="number"
                     min={10}
                     max={120}
                     value={targetClipSec}
                     onChange={(e) => setTargetClipSec(Number(e.target.value))}
+                    className="h-8 text-xs tabular-nums"
                   />
                 </label>
                 <label className="space-y-1 text-xs">
-                  <span className="text-muted-foreground">Max Clip (sec)</span>
+                  <span className="text-muted-foreground">Max Clip</span>
                   <Input
                     type="number"
                     min={10}
                     max={180}
                     value={maxClipSec}
                     onChange={(e) => setMaxClipSec(Number(e.target.value))}
+                    className="h-8 text-xs tabular-nums"
                   />
                 </label>
                 <label className="space-y-1 text-xs">
-                  <span className="text-muted-foreground">Score Threshold (0.1–0.95)</span>
+                  <span className="text-muted-foreground">Threshold</span>
                   <Input
                     type="number"
                     step={0.05}
@@ -353,14 +357,15 @@ export function DashboardClient({
                     max={0.95}
                     value={scoreThreshold}
                     onChange={(e) => setScoreThreshold(Number(e.target.value))}
+                    className="h-8 text-xs tabular-nums"
                   />
                 </label>
                 <label className="space-y-1 text-xs">
-                  <span className="text-muted-foreground">Caption Language</span>
+                  <span className="text-muted-foreground">Captions</span>
                   <select
                     value={captionLanguage}
                     onChange={(e) => setCaptionLanguage(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-input bg-background/80 px-3 text-sm"
+                    className="flex h-8 w-full rounded-md border border-border/80 bg-secondary/30 px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60"
                   >
                     {SUPPORTED_CAPTION_LANGUAGES.map((lang) => (
                       <option key={lang.code} value={lang.code}>
@@ -380,113 +385,100 @@ export function DashboardClient({
             )}
 
             {inspected && (
-              <div className="rounded-xl border border-border bg-secondary/25 p-5">
-                <div className="flex flex-col gap-5 md:flex-row">
+              <div className="rounded-lg border border-border/80 bg-secondary/20 p-4">
+                <div className="flex flex-col gap-4 md:flex-row">
                   {inspected.metadata.thumbnailUrl && (
                     <img
                       src={inspected.metadata.thumbnailUrl}
                       alt={inspected.metadata.title ?? "YouTube video thumbnail"}
-                      className="h-32 w-full rounded-lg border border-border object-cover md:w-56"
+                      className="h-28 w-full rounded-md border border-border/80 object-cover md:w-48"
                     />
                   )}
-                  <div className="flex-1 space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="success">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Valid Video ID: {inspected.metadata.videoId}
+                  <div className="flex-1 space-y-2.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant="default" className="text-[11px]">
+                        ID: {inspected.metadata.videoId}
                       </Badge>
-                      <Badge variant={streamTypeLabel(inspected.metadata.streamType).variant}>
+                      <Badge variant={streamTypeLabel(inspected.metadata.streamType).variant} className="text-[11px]">
                         <Radio className="h-3 w-3" />
                         {streamTypeLabel(inspected.metadata.streamType).label}
                       </Badge>
                       {inspected.metadata.durationSec && (
-                        <Badge variant="secondary">
+                        <Badge variant="secondary" className="text-[11px] tabular-nums">
                           <Clock className="h-3 w-3" />
                           {formatTime(inspected.metadata.durationSec)}
                         </Badge>
                       )}
-                      <Badge variant="secondary">
-                        Source: {inspected.metadata.metadataSource}
-                      </Badge>
                     </div>
 
                     <div>
-                      <h3 className="text-base font-semibold">
+                      <h3 className="text-sm font-medium text-foreground">
                         {inspected.metadata.title ?? `YouTube Video (${inspected.metadata.videoId})`}
                       </h3>
                       {inspected.metadata.channelTitle && (
                         <p className="text-xs text-muted-foreground">
-                          Channel: {inspected.metadata.channelTitle}
+                          {inspected.metadata.channelTitle}
                         </p>
                       )}
                     </div>
 
                     {inspected.isLiveStream || inspected.metadata.streamType === "live_stream" ? (
-                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs leading-relaxed text-amber-100">
-                        <p className="font-semibold text-amber-300">
-                          🔴 Live Stream Detected — Real-time Ingestion Enabled
-                        </p>
-                        <p className="mt-1 text-amber-200/90">
-                          {inspected.ingestion.reason}
-                        </p>
-                        <p className="mt-1 text-amber-200/75">
-                          ClipForge uses rolling HLS audio pulls (~1MB/min) + live chat velocity spikes (MPS) to pinpoint clutch moments, then selectively fetches only the 30–60s peak video slice.
+                      <div className="rounded border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-200/90">
+                        <div className="flex items-center gap-2 font-medium text-amber-300">
+                          <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                          Live Stream Detected — Real-time Ingestion Ready
+                        </div>
+                        <p className="mt-1 text-muted-foreground">
+                          ClipForge monitors rolling HLS audio and chat velocity spikes to slice clutch highlights automatically.
                         </p>
                       </div>
                     ) : (
-                      <div className="rounded-lg border border-primary/25 bg-primary/10 p-3 text-xs leading-relaxed text-sky-100">
-                        <p className="font-medium text-primary">
-                          Authorized Source File Required ({inspected.ingestion.providerName})
-                        </p>
-                        <p className="mt-1 text-muted-foreground">
-                          {inspected.metadata.mediaAccessReason}
-                        </p>
-                        <p className="mt-1 text-muted-foreground/90">
-                          {inspected.metadata.notice}
-                        </p>
+                      <div className="rounded border border-border/80 bg-secondary/30 p-2.5 text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">Authorized upload:</span> Upload your local recording to process highlights and vertical framing.
                       </div>
                     )}
 
-                    <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
                       {inspected.isLiveStream || inspected.metadata.streamType === "live_stream" ? (
                         <>
                           <Button
                             onClick={() => handleCreateProject(true)}
                             disabled={creating}
-                            className="bg-amber-500 font-semibold text-black hover:bg-amber-400"
+                            size="sm"
                           >
                             {creating ? (
                               <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                 Starting Live Monitor...
                               </>
                             ) : (
                               <>
-                                <Radio className="h-4 w-4" />
-                                Monitor Live Stream (No Upload Needed)
-                                <ArrowRight className="h-4 w-4" />
+                                <Radio className="h-3.5 w-3.5" />
+                                Monitor Live Stream
+                                <ArrowRight className="h-3.5 w-3.5" />
                               </>
                             )}
                           </Button>
                           <Button
                             variant="secondary"
+                            size="sm"
                             onClick={() => handleCreateProject(false)}
                             disabled={creating}
                           >
-                            Upload Local VOD/Recording Instead
+                            Upload Local Recording Instead
                           </Button>
                         </>
                       ) : (
-                        <Button onClick={() => handleCreateProject(false)} disabled={creating}>
+                        <Button onClick={() => handleCreateProject(false)} disabled={creating} size="sm">
                           {creating ? (
                             <>
-                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               Creating Project...
                             </>
                           ) : (
                             <>
-                              Continue to Authorized Video Upload
-                              <ArrowRight className="h-4 w-4" />
+                              Continue to Upload
+                              <ArrowRight className="h-3.5 w-3.5" />
                             </>
                           )}
                         </Button>
@@ -497,7 +489,7 @@ export function DashboardClient({
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                       >
-                        Open Stream / URL
+                        Source Link
                         <ExternalLink className="h-3 w-3" />
                       </a>
                     </div>
@@ -509,37 +501,35 @@ export function DashboardClient({
         </Card>
 
         {/* Recent Jobs List */}
-        <section className="space-y-4">
+        <section className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold">Your Clip Jobs</h2>
-              <p className="text-xs text-muted-foreground">
-                Background analysis and 9:16 renders persist in PostgreSQL — safely leave and return anytime.
-              </p>
+              <h2 className="text-sm font-semibold tracking-tight text-foreground uppercase tracking-wider text-muted-foreground">
+                Recent Projects
+              </h2>
             </div>
-            <Badge variant="secondary">{jobs.length} total</Badge>
+            <span className="text-xs text-muted-foreground tabular-nums">{jobs.length} projects</span>
           </div>
 
           {loadingJobs && jobs.length === 0 ? (
             <Card>
-              <CardContent className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Loading your clip jobs...
+              <CardContent className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Loading projects...
               </CardContent>
             </Card>
           ) : jobs.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                <Film className="mb-3 h-10 w-10 text-muted-foreground/60" />
-                <p className="text-sm font-medium">No clip jobs yet</p>
-                <p className="mt-1 max-w-md text-xs text-muted-foreground">
-                  Paste a YouTube URL above to inspect its metadata, then upload your authorized
-                  gaming recording to generate vertical clips.
+                <Film className="mb-2.5 h-8 w-8 text-muted-foreground/40" />
+                <p className="text-sm font-medium text-foreground">No clip projects yet</p>
+                <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                  Paste a YouTube URL above to begin clipping moments.
                 </p>
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-2">
               {jobs.map((job) => {
                 const badge = jobStatusBadge(job.status);
                 const stream = streamTypeLabel(job.youtubeStreamType);
@@ -552,80 +542,77 @@ export function DashboardClient({
                 return (
                   <Card
                     key={job.id}
-                    className="group transition hover:border-primary/40"
+                    className="border-border/80 bg-card hover:border-border transition-colors"
                   >
-                    <CardContent className="p-4">
-                      <div className="flex gap-4">
+                    <CardContent className="p-3.5">
+                      <div className="flex gap-3.5">
                         {job.youtubeThumbnailUrl ? (
                           <img
                             src={job.youtubeThumbnailUrl}
                             alt={job.youtubeTitle ?? job.youtubeVideoId}
-                            className="h-20 w-32 shrink-0 rounded-lg border border-border object-cover"
+                            className="h-20 w-32 shrink-0 rounded-md border border-border/80 object-cover"
                           />
                         ) : (
-                          <div className="flex h-20 w-32 shrink-0 items-center justify-center rounded-lg border border-border bg-secondary">
-                            <Video className="h-6 w-6 text-muted-foreground" />
+                          <div className="flex h-20 w-32 shrink-0 items-center justify-center rounded-md border border-border/80 bg-secondary/40">
+                            <Video className="h-5 w-5 text-muted-foreground" />
                           </div>
                         )}
 
-                        <div className="min-w-0 flex-1 space-y-2">
+                        <div className="min-w-0 flex-1 space-y-1.5">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <Badge variant={badge.variant}>{badge.label}</Badge>
-                            <Badge variant={stream.variant}>{stream.label}</Badge>
+                            <Badge variant={badge.variant} className="text-[10px] py-0">{badge.label}</Badge>
                             {job.isLiveStream && (
-                              <Badge variant="accent">🔴 Live HLS</Badge>
+                              <Badge variant="warning" className="text-[10px] py-0">
+                                <span className="h-1 w-1 rounded-full bg-rose-500 mr-1" />
+                                Live HLS
+                              </Badge>
                             )}
                           </div>
 
                           <Link
                             href={`/jobs/${job.id}`}
-                            className="block truncate text-sm font-semibold hover:text-primary"
+                            className="block truncate text-sm font-medium text-foreground hover:text-primary transition-colors"
                           >
                             {job.youtubeTitle ?? `YouTube Video (${job.youtubeVideoId})`}
                           </Link>
 
-                          <p className="truncate text-xs text-muted-foreground">
+                          <p className="truncate text-xs text-muted-foreground tabular-nums">
                             {job.sourceFileName
-                              ? `File: ${job.sourceFileName}${job.mediaDurationSec ? ` · ${formatTime(job.mediaDurationSec)}` : ""}`
+                              ? `${job.sourceFileName}${job.mediaDurationSec ? ` · ${formatTime(job.mediaDurationSec)}` : ""}`
                               : job.isLiveStream
-                                ? "Live HLS Stream (Audio-First + Chat Velocity)"
-                                : "No media uploaded yet"}
+                                ? "Live stream capture"
+                                : "Awaiting media"}
                           </p>
 
                           {inFlight && (
-                            <div className="space-y-1">
-                              <Progress value={job.progressPct} />
-                              <p className="truncate text-[11px] text-muted-foreground">
+                            <div className="space-y-1 pt-0.5">
+                              <Progress value={job.progressPct} className="h-1" />
+                              <p className="truncate text-[10px] text-muted-foreground">
                                 {job.progressMessage ?? "Processing..."}
                               </p>
                             </div>
                           )}
 
-                          {job.status === "failed" && job.errorMessage && (
-                            <p className="line-clamp-1 text-xs text-red-400">
-                              {job.errorMessage}
-                            </p>
-                          )}
-
                           <div className="flex items-center justify-between pt-1">
-                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-2.5 text-xs text-muted-foreground tabular-nums">
                               <span>{job._count?.candidates ?? 0} clips</span>
+                              <span>·</span>
                               <span>{job._count?.renderExports ?? 0} exports</span>
                             </div>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1">
                               <Link href={`/jobs/${job.id}`}>
-                                <Button size="sm" variant="secondary">
+                                <Button size="sm" variant="secondary" className="h-7 px-2.5 text-xs">
                                   Open Studio
                                 </Button>
                               </Link>
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                title="Delete job and stored media"
+                                title="Delete job"
                                 onClick={() => handleDeleteJob(job.id)}
-                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Trash2 className="h-3 w-3" />
                               </Button>
                             </div>
                           </div>

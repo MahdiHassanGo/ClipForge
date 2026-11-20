@@ -421,20 +421,21 @@ export function JobWorkspaceClient({
               className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              Back to all projects
+              Projects
             </Link>
-            <h1 className="flex flex-wrap items-center gap-2 text-xl font-bold tracking-tight sm:text-2xl">
+            <h1 className="flex flex-wrap items-center gap-2 text-lg font-semibold tracking-tight text-foreground sm:text-xl">
               <span>{job.youtubeTitle ?? `YouTube Video (${job.youtubeVideoId})`}</span>
               {job.isLiveStream && (
-                <Badge variant="accent" className="text-xs">
-                  🔴 Live HLS Ingest
-                </Badge>
+                <span className="inline-flex items-center gap-1.5 rounded border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
+                  Live Ingest
+                </span>
               )}
             </h1>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground tabular-nums">
               {job.youtubeChannel && <span>{job.youtubeChannel}</span>}
               <span>·</span>
-              <span>Video ID: {job.youtubeVideoId}</span>
+              <span>ID: {job.youtubeVideoId}</span>
               {job.sourceFileName && (
                 <>
                   <span>·</span>
@@ -467,16 +468,16 @@ export function JobWorkspaceClient({
                 disabled={retryingJob}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
-                Re-Analyze Media
+                Re-Analyze
               </Button>
             )}
           </div>
         </div>
 
         {/* Typed State Machine Stepper */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
+        <Card className="border-border/80 bg-card">
+          <CardContent className="p-3.5">
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-6">
               {PIPELINE_STEPS.map((step, idx) => {
                 const isDone =
                   job.status !== "failed" &&
@@ -486,15 +487,15 @@ export function JobWorkspaceClient({
                 return (
                   <div
                     key={step.key}
-                    className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs ${
+                    className={`flex items-center gap-2 rounded border px-2.5 py-1.5 text-xs transition-colors ${
                       isCurrent
-                        ? "border-primary bg-primary/15 text-primary font-medium"
+                        ? "border-primary/80 bg-primary/10 text-primary font-medium"
                         : isDone
-                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                          : "border-border bg-secondary/20 text-muted-foreground"
+                          ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-400"
+                          : "border-border/60 bg-secondary/20 text-muted-foreground"
                     }`}
                   >
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-current text-[10px]">
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[10px] tabular-nums font-mono">
                       {isDone ? "✓" : idx + 1}
                     </span>
                     <span className="truncate">{step.label}</span>
@@ -504,40 +505,29 @@ export function JobWorkspaceClient({
             </div>
 
             {(job.status === "uploading" || job.status === "analyzing" || job.status === "live_monitoring") && (
-              <div className="mt-4 space-y-2 rounded-lg border border-primary/25 bg-primary/5 p-3.5">
+              <div className="mt-3 space-y-1.5 rounded border border-primary/20 bg-primary/5 p-3">
                 <div className="flex items-center justify-between text-xs">
                   <span className="flex items-center gap-2 font-medium text-primary">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    {job.progressMessage ?? (job.status === "live_monitoring" ? "Monitoring live stream in real time..." : "Processing in background worker...")}
+                    {job.progressMessage ?? (job.status === "live_monitoring" ? "Monitoring stream live..." : "Processing media...")}
                   </span>
-                  <span className="font-mono text-muted-foreground">{job.progressPct}%</span>
+                  <span className="font-mono text-muted-foreground tabular-nums">{job.progressPct}%</span>
                 </div>
-                <Progress value={job.progressPct} />
-                <p className="text-[11px] text-muted-foreground">
-                  {job.status === "live_monitoring"
-                    ? "Live Ingest Pipeline Active: Pulling rolling low-bitrate audio chunks, polling live chat velocity (MPS & hype density), and selectively slicing high-res video upon peak excitement."
-                    : "Processing runs asynchronously in the ClipForge background worker. You can close this tab or refresh without losing progress."}
-                </p>
+                <Progress value={job.progressPct} className="h-1" />
               </div>
             )}
 
             {job.isLiveStream && job.status === "live_monitoring" && (
-              <div className="mt-3 grid gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-100 sm:grid-cols-4">
-                <div className="space-y-1">
-                  <p className="font-semibold text-amber-300">Step A: HLS Manifest</p>
-                  <p className="text-[11px] text-amber-200/80">Rolling .m3u8 manifest resolved</p>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded border border-border/80 bg-secondary/30 px-3.5 py-2 text-xs">
+                <div className="flex items-center gap-2 text-foreground font-medium">
+                  <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+                  Live HLS Stream Telemetry
                 </div>
-                <div className="space-y-1">
-                  <p className="font-semibold text-amber-300">Step B: Audio-First</p>
-                  <p className="text-[11px] text-amber-200/80">Pulling ~1MB/min audio stream</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="font-semibold text-amber-300">Step C: Chat Velocity</p>
-                  <p className="text-[11px] text-amber-200/80">Tracking messages/sec & hype spikes</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="font-semibold text-amber-300">Step D: Selective Slice</p>
-                  <p className="text-[11px] text-amber-200/80">Downloading only 30–60s peak video</p>
+                <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground tabular-nums">
+                  <span><span className="text-foreground">Manifest:</span> Rolling .m3u8</span>
+                  <span><span className="text-foreground">Audio:</span> ~1MB/min Stream</span>
+                  <span><span className="text-foreground">Chat:</span> Spike Detector (MPS)</span>
+                  <span><span className="text-foreground">Slice:</span> 30–60s Peak Ingest</span>
                 </div>
               </div>
             )}
@@ -623,18 +613,18 @@ export function JobWorkspaceClient({
                     <div
                       key={clip.id}
                       onClick={() => setSelectedClipId(clip.id)}
-                      className={`cursor-pointer rounded-xl border p-3.5 transition ${
+                      className={`cursor-pointer rounded-md border p-3 transition-colors ${
                         isCurrent
-                          ? "border-primary bg-primary/10 shadow-sm"
+                          ? "border-primary/80 bg-secondary/50"
                           : clip.status === "discarded"
-                            ? "border-border/50 bg-card/40 opacity-60 hover:opacity-85"
-                            : "border-border bg-card hover:border-primary/40"
+                            ? "border-border/40 bg-card/40 opacity-50 hover:opacity-75"
+                            : "border-border/80 bg-card hover:border-border"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <Badge variant="secondary">#{clip.rank}</Badge>
+                            <Badge variant="secondary" className="text-[10px] py-0 font-mono tabular-nums">#{clip.rank}</Badge>
                             <Badge
                               variant={
                                 clip.score >= 0.7
@@ -643,14 +633,15 @@ export function JobWorkspaceClient({
                                     ? "default"
                                     : "secondary"
                               }
+                              className="text-[10px] py-0 font-mono tabular-nums"
                             >
                               Score {Math.round(clip.score * 100)}
                             </Badge>
-                            <span className="font-mono text-[11px] text-muted-foreground">
+                            <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
                               {formatTime(clip.startSec)}–{formatTime(clip.endSec)} ({Math.round(dur)}s)
                             </span>
                           </div>
-                          <h3 className="mt-1.5 truncate text-sm font-semibold">
+                          <h3 className="mt-1.5 truncate text-xs font-medium text-foreground">
                             {clip.title}
                           </h3>
                         </div>
@@ -660,7 +651,7 @@ export function JobWorkspaceClient({
                             <Button
                               size="sm"
                               variant="default"
-                              className="h-7 px-2 text-[11px]"
+                              className="h-6 px-2 text-[10px]"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 void quickSetClipStatus(clip, "suggested");
@@ -673,7 +664,7 @@ export function JobWorkspaceClient({
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-7 px-2 text-[11px]"
+                              className="h-6 px-2 text-[10px]"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 void quickSetClipStatus(clip, "suggested");
@@ -685,7 +676,7 @@ export function JobWorkspaceClient({
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-7 px-2 text-[11px]"
+                              className="h-6 px-2 text-[10px]"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 void quickSetClipStatus(clip, "selected");
@@ -700,24 +691,24 @@ export function JobWorkspaceClient({
                               size="icon"
                               variant="ghost"
                               title="Discard candidate"
-                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              className="h-6 w-6 text-muted-foreground hover:text-destructive"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 void quickSetClipStatus(clip, "discarded");
                               }}
                             >
-                              <XCircle className="h-3.5 w-3.5" />
+                              <XCircle className="h-3 w-3" />
                             </Button>
                           )}
                         </div>
                       </div>
 
-                      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                      <p className="mt-2 text-xs leading-relaxed text-muted-foreground line-clamp-2">
                         {clip.reason}
                       </p>
 
                       {clip.signalBreakdown && (
-                        <div className={`mt-2.5 grid gap-1.5 text-[10px] text-muted-foreground ${
+                        <div className={`mt-2 grid gap-1.5 text-[10px] text-muted-foreground tabular-nums ${
                           clip.signalBreakdown.chatVelocityScore !== undefined ? "grid-cols-5" : "grid-cols-4"
                         }`}>
                           <SignalMiniBar label="Speech" value={clip.signalBreakdown.speechScore} />
@@ -731,9 +722,9 @@ export function JobWorkspaceClient({
                       )}
 
                       {clip.hasUnreviewedCaptions && (
-                        <div className="mt-2 inline-flex items-center gap-1 text-[11px] text-amber-300">
-                          <AlertTriangle className="h-3 w-3" />
-                          Captions flagged for review
+                        <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-amber-300/90">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                          Captions need review
                         </div>
                       )}
                     </div>
@@ -1370,15 +1361,15 @@ export function JobWorkspaceClient({
                                     key={presetKey}
                                     type="button"
                                     onClick={() => togglePreset(presetKey)}
-                                    className={`rounded-lg border p-3 text-left transition ${
+                                    className={`rounded-md border p-3 text-left transition-colors ${
                                       active
-                                        ? "border-primary bg-primary/15"
-                                        : "border-border bg-secondary/20 hover:border-primary/40"
+                                        ? "border-primary/80 bg-secondary/60 text-foreground"
+                                        : "border-border/80 bg-secondary/20 text-muted-foreground hover:border-border hover:text-foreground"
                                     }`}
                                   >
                                     <div className="flex items-center justify-between">
-                                      <span className="text-xs font-semibold">{spec.label}</span>
-                                      {active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+                                      <span className="text-xs font-medium text-foreground">{spec.label}</span>
+                                      {active && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
                                     </div>
                                     <p className="mt-1 text-[11px] text-muted-foreground">
                                       {spec.description}
@@ -1389,29 +1380,29 @@ export function JobWorkspaceClient({
                             </div>
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-3">
+                          <div className="flex flex-wrap items-center gap-2.5">
                             <Button
                               onClick={() => void handleRender([selectedClip.id])}
                               disabled={rendering || selectedClip.status === "discarded"}
+                              size="sm"
                             >
                               {rendering ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               ) : (
-                                <Sparkles className="h-4 w-4" />
+                                <Film className="h-3.5 w-3.5" />
                               )}
-                              Render Current Clip ({selectedPresets.length} preset
-                              {selectedPresets.length === 1 ? "" : "s"})
+                              Render 9:16 Clip ({selectedPresets.length})
                             </Button>
 
                             <Button
                               variant="secondary"
+                              size="sm"
                               onClick={() =>
                                 void handleRender(selectedCandidates.map((c) => c.id))
                               }
                               disabled={rendering || selectedCandidates.length === 0}
                             >
-                              Render All Selected Clips ({selectedCandidates.length} ×{" "}
-                              {selectedPresets.length})
+                              Render All Selected ({selectedCandidates.length})
                             </Button>
                           </div>
 
