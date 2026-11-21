@@ -1,0 +1,12 @@
+node_modules
+.git
+.env
+.env.*
+!.env.example
+storage
+tmp
+models
+dist
+.next
+.DS_Store
+*.log
