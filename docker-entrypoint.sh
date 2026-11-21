@@ -1,5 +1,5 @@
-#!/bin/sh
-set -e
+#!/bin/bash
+set -eo pipefail
 
 echo "=== Starting ClipForge Production Container ==="
 
@@ -17,15 +17,27 @@ node apps/worker/dist/index.js &
 WORKER_PID=$!
 echo "[Init] Worker started with PID ${WORKER_PID}"
 
-# 4. Handle graceful shutdown
+# 4. Start Next.js Web App
+echo "[Init] Starting Next.js Web App on port ${PORT:-3000}..."
+pnpm --filter @clipforge/web exec next start -H 0.0.0.0 -p "${PORT:-3000}" &
+WEB_PID=$!
+echo "[Init] Next.js Web App started with PID ${WEB_PID}"
+
+# 5. Trap termination signals and forward to child processes
 cleanup() {
-  echo "[Shutdown] Caught signal, stopping worker and web..."
+  echo "[Shutdown] Received termination signal. Stopping services..."
   kill -TERM "$WORKER_PID" 2>/dev/null || true
+  kill -TERM "$WEB_PID" 2>/dev/null || true
   wait "$WORKER_PID" 2>/dev/null || true
+  wait "$WEB_PID" 2>/dev/null || true
   exit 0
 }
+
 trap cleanup SIGTERM SIGINT
 
-# 5. Start Next.js Web App in foreground
-echo "[Init] Starting Next.js Web App on port ${PORT:-3000}..."
-exec pnpm --filter @clipforge/web exec next start -H 0.0.0.0 -p "${PORT:-3000}"
+# 6. Wait for any child process to exit
+wait -n "$WORKER_PID" "$WEB_PID"
+EXIT_CODE=$?
+echo "[Container] A child process exited with code $EXIT_CODE. Shutting down..."
+cleanup
+exit $EXIT_CODE
