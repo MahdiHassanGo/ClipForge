@@ -1,6 +1,23 @@
-# ClipForge
+<div align="center">
 
-**AI-powered gaming video clipping studio** that turns long-form gaming VODs and recordings into punchy **9:16 vertical highlights** with synced captions, face-cam framing, and platform-friendly MP4 presets for **YouTube Shorts**, **TikTok**, and **Instagram Reels**.
+# 🎬 ClipForge
+
+### Autonomous AI Video Clipping & Multimodal Highlight Studio
+
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Railway-0B0D0E?style=for-the-badge&logo=railway&logoColor=white)](https://clipforge-app-production.up.railway.app)
+[![Next.js 15](https://img.shields.io/badge/Next.js_15-black?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io/)
+[![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)](https://ffmpeg.org/)
+[![Groq Whisper](https://img.shields.io/badge/Groq-Whisper_Large_v3-F55036?style=for-the-badge&logo=groq&logoColor=white)](https://groq.com/)
+
+**🌐 Live Production App:** [https://clipforge-app-production.up.railway.app](https://clipforge-app-production.up.railway.app)
+
+</div>
+
+---
+
+**ClipForge** is an **AI-powered gaming video clipping studio** that turns long-form gaming VODs and recordings into punchy **9:16 vertical highlights** with synced captions, face-cam framing, and platform-friendly MP4 presets for **YouTube Shorts**, **TikTok**, and **Instagram Reels**.
 
 ![ClipForge 9:16 Studio Preview](./docs/clipforge-studio-preview.jpg)
 
