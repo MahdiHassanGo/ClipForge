@@ -268,8 +268,22 @@ export function createObjectStorageFromEnv(
   }
 
   const configuredDir = env.LOCAL_STORAGE_DIR ?? "./storage";
-  const resolvedDir = path.isAbsolute(configuredDir)
+  let resolvedDir = path.isAbsolute(configuredDir)
     ? configuredDir
     : path.resolve(baseDir, configuredDir);
+
+  try {
+    if (!fs.existsSync(resolvedDir)) {
+      fs.mkdirSync(resolvedDir, { recursive: true });
+    }
+  } catch {
+    resolvedDir = path.resolve(baseDir, "./storage");
+    try {
+      fs.mkdirSync(resolvedDir, { recursive: true });
+    } catch {
+      // ignore
+    }
+  }
+
   return new LocalObjectStorageProvider(resolvedDir);
 }

@@ -1464,6 +1464,22 @@ export function JobWorkspaceClient({
                                             ? formatBytes(exp.outputFileSizeBytes)
                                             : exp.progressMessage ?? "Pending"}
                                         </p>
+                                        {exp.status === "complete" && exp.progressMessage?.startsWith("Saved to ") && (
+                                          <div className="mt-1.5 flex items-center gap-1.5 rounded bg-secondary/40 px-2 py-0.5 text-[10px] text-muted-foreground">
+                                            <span className="truncate font-mono">{exp.progressMessage}</span>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                void navigator.clipboard.writeText(
+                                                  exp.progressMessage!.replace("Saved to ", ""),
+                                                )
+                                              }
+                                              className="ml-auto shrink-0 font-sans text-primary hover:underline"
+                                            >
+                                              Copy Path
+                                            </button>
+                                          </div>
+                                        )}
                                       </div>
 
                                       <div className="flex items-center gap-2">

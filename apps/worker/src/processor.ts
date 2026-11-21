@@ -527,12 +527,24 @@ export class ClipWorkerProcessor {
       const storageKey = `exports/${pending.userId}/${pending.jobId}/${pending.id}.mp4`;
       await this.storage.putFromFile(storageKey, result.outputVideoPath, "video/mp4");
 
+      // Save a direct, easily-accessible copy in the dedicated clips directory
+      const storageBase = process.env.LOCAL_STORAGE_DIR ?? "./storage";
+      const resolvedStorageBase = path.isAbsolute(storageBase)
+        ? storageBase
+        : path.resolve(this.repoRoot, storageBase);
+      const userClipsDir = path.join(resolvedStorageBase, "clips", safeTitle || pending.jobId);
+      await fs.mkdir(userClipsDir, { recursive: true });
+      const exportedClipPath = path.join(userClipsDir, outputFileName);
+      await fs.copyFile(result.outputVideoPath, exportedClipPath);
+
+      renderLog.info("Clip saved to user directory", { exportedClipPath });
+
       await prisma.renderExport.update({
         where: { id: pending.id },
         data: {
           status: "complete",
           progressPct: 100,
-          progressMessage: "Export ready to download.",
+          progressMessage: `Saved to ${exportedClipPath}`,
           outputStorageKey: storageKey,
           outputFileName,
           outputFileSizeBytes: BigInt(result.fileSizeBytes),

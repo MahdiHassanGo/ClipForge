@@ -10,6 +10,8 @@ import {
   Clock,
   ExternalLink,
   Film,
+  FolderOpen,
+  HardDrive,
   Info,
   Link2,
   Loader2,
@@ -123,9 +125,69 @@ export function DashboardClient({
     capabilities.defaultAnalysisConfig.captionLanguage,
   );
 
+  const [storageInfo, setStorageInfo] = useState<{
+    currentStorageDir: string;
+    currentTempDir: string;
+    currentClipsDir: string;
+    currentFreeBytes: number;
+    currentFreeFormatted: string;
+    isLowSpace: boolean;
+    volumes: Array<{
+      name: string;
+      mountPath: string;
+      clipForgePath: string;
+      freeBytes: number;
+      totalBytes: number;
+      freeFormatted: string;
+      isLowSpace: boolean;
+      isRecommended: boolean;
+    }>;
+  } | null>(null);
+  const [selectedStoragePath, setSelectedStoragePath] = useState<string>("");
+  const [customPathInput, setCustomPathInput] = useState<string>("");
+  const [updatingStorage, setUpdatingStorage] = useState(false);
+  const [storageSuccessMsg, setStorageSuccessMsg] = useState<string | null>(null);
+
   const [creating, setCreating] = useState(false);
   const [jobs, setJobs] = useState<ClipJobSummaryDto[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
+
+  async function fetchStorageInfo() {
+    try {
+      const res = await fetch("/api/system/storage");
+      if (res.ok) {
+        const data = await res.json();
+        setStorageInfo(data);
+        if (!selectedStoragePath) {
+          setSelectedStoragePath(data.currentStorageDir);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleApplyStorage(targetPath: string) {
+    setUpdatingStorage(true);
+    setStorageSuccessMsg(null);
+    try {
+      const res = await fetch("/api/system/storage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storageDir: targetPath }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStorageSuccessMsg(`Storage saved: ${data.storageDir} (${data.freeFormatted} available)`);
+        setSelectedStoragePath(data.storageDir);
+        await fetchStorageInfo();
+      }
+    } catch {
+      // ignore
+    } finally {
+      setUpdatingStorage(false);
+    }
+  }
 
   async function fetchJobs() {
     if (!user) return;
@@ -144,6 +206,7 @@ export function DashboardClient({
   useEffect(() => {
     if (!user) return;
     void fetchJobs();
+    void fetchStorageInfo();
     const timer = setInterval(() => {
       void fetch("/api/jobs")
         .then((r) => (r.ok ? r.json() : null))
@@ -245,6 +308,38 @@ export function DashboardClient({
       <Navbar user={user} capabilities={capabilities} />
 
       <main className="mx-auto max-w-7xl space-y-8 px-4 pt-8 sm:px-6">
+        {/* Storage safety alert when internal space is low */}
+        {storageInfo?.isLowSpace && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-xs text-rose-200">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+              <div>
+                <p className="font-semibold text-rose-100">
+                  Storage Warning: Your current download drive only has {storageInfo.currentFreeFormatted} free space left!
+                </p>
+                <p className="mt-0.5 text-rose-200/80">
+                  Fetching long video streams or rendering vertical clips on this drive may run out of space.
+                  Switch to an external drive to save all clips safely.
+                </p>
+              </div>
+            </div>
+            {storageInfo.volumes.find((v) => v.isRecommended) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  handleApplyStorage(storageInfo.volumes.find((v) => v.isRecommended)!.clipForgePath)
+                }
+                disabled={updatingStorage}
+                className="border-rose-500/40 text-xs text-rose-100 hover:bg-rose-500/20"
+              >
+                Switch to {storageInfo.volumes.find((v) => v.isRecommended)!.name} (
+                {storageInfo.volumes.find((v) => v.isRecommended)!.freeFormatted} free)
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* Honest capability & setup status bar */}
         {(!capabilities.youtubeApiConfigured || !capabilities.whisperConfigured) && (
           <div className="flex flex-wrap items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200">
@@ -374,6 +469,35 @@ export function DashboardClient({
                     ))}
                   </select>
                 </label>
+
+                <div className="sm:col-span-2 lg:col-span-5 flex flex-col gap-2 rounded border border-border/70 bg-secondary/30 p-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-0.5">
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                      <HardDrive className="h-3.5 w-3.5 text-primary" /> Custom Storage & Clip Destination
+                    </span>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      Current: <code className="font-mono text-foreground">{storageInfo?.currentStorageDir}</code>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={customPathInput}
+                      onChange={(e) => setCustomPathInput(e.target.value)}
+                      placeholder="/Volumes/YourExternalDrive/clips"
+                      className="h-7 w-60 text-xs font-mono"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="h-7 text-xs shrink-0"
+                      disabled={updatingStorage || !customPathInput.trim()}
+                      onClick={() => handleApplyStorage(customPathInput.trim())}
+                    >
+                      {updatingStorage ? <Loader2 className="h-3 w-3 animate-spin" /> : "Set Path"}
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -443,6 +567,54 @@ export function DashboardClient({
                         </p>
                       </div>
                     )}
+
+                    {/* Storage Destination & Space Safeguard */}
+                    <div className="rounded-md border border-border/80 bg-secondary/35 p-3 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 font-medium text-foreground">
+                          <HardDrive className="h-3.5 w-3.5 text-primary" />
+                          Download & Clip Destination (Storage Safeguard):
+                        </span>
+                        {storageInfo && (
+                          <Badge variant={storageInfo.isLowSpace ? "destructive" : "secondary"} className="text-[10px]">
+                            {storageInfo.currentFreeFormatted} free
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {storageInfo?.volumes.map((vol) => {
+                          const isActive =
+                            storageInfo.currentStorageDir.startsWith(vol.clipForgePath) ||
+                            storageInfo.currentStorageDir.startsWith(vol.mountPath);
+                          return (
+                            <Button
+                              key={vol.mountPath}
+                              type="button"
+                              size="sm"
+                              variant={isActive ? "default" : "outline"}
+                              className="h-7 text-[11px] px-2.5"
+                              onClick={() => handleApplyStorage(vol.clipForgePath)}
+                              disabled={updatingStorage}
+                            >
+                              <FolderOpen className="h-3 w-3 mr-1" />
+                              {vol.name} ({vol.freeFormatted} free)
+                              {vol.isRecommended && <span className="ml-1 text-[9px] opacity-75">★ Rec</span>}
+                            </Button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="text-[11px] text-muted-foreground flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                        <span className="truncate">
+                          Saving to: <code className="text-foreground font-mono">{storageInfo?.currentStorageDir}</code>
+                        </span>
+                      </div>
+
+                      {storageSuccessMsg && (
+                        <p className="text-[11px] text-emerald-400 font-medium">✓ {storageSuccessMsg}</p>
+                      )}
+                    </div>
 
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                       {inspected.isLiveStream || inspected.metadata.streamType === "live_stream" ? (
