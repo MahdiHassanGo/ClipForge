@@ -107,6 +107,7 @@ export interface ClipJobSummaryDto {
   youtubeStreamType: StreamType;
   metadataSource: MetadataSource;
   metadataNotice: string | null;
+  sourceProvider?: string | null;
   sourceFileName: string | null;
   sourceFileSizeBytes: number | null;
   mediaDurationSec: number | null;

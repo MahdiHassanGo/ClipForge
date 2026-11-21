@@ -76,6 +76,7 @@ export function resolveJobRetryTarget(params: {
   hasSourceMedia: boolean;
   hasCandidates: boolean;
   isLiveStream?: boolean;
+  sourceProvider?: string;
   retryCount: number;
   maxRetries?: number;
 }): RetryResolution {
@@ -99,6 +100,13 @@ export function resolveJobRetryTarget(params: {
     return {
       allowed: true,
       nextStatus: "live_monitoring",
+    };
+  }
+
+  if (params.sourceProvider === "direct_scrape") {
+    return {
+      allowed: true,
+      nextStatus: "analyzing",
     };
   }
 

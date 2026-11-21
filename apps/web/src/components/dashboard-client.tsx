@@ -273,7 +273,7 @@ export function DashboardClient({
                   New Clip Project
                 </CardTitle>
                 <CardDescription className="mt-1 text-xs">
-                  Paste a YouTube video or livestream URL to inspect metadata and launch the clipping studio.
+                  Paste any YouTube video, archived livestream, Twitch VOD, podcast audio, or video link to scrape and generate vertical clips automatically.
                 </CardDescription>
               </div>
               <Button
@@ -294,7 +294,7 @@ export function DashboardClient({
               <Input
                 value={youtubeUrl}
                 onChange={(e) => setYoutubeUrl(e.target.value)}
-                placeholder="https://www.youtube.com/watch?v=... or /live/..."
+                placeholder="Paste YouTube, Twitch, podcast, or stream link (e.g. https://www.youtube.com/watch?v=...)"
                 className="flex-1 text-xs sm:text-sm"
                 required
               />
@@ -433,8 +433,14 @@ export function DashboardClient({
                         </p>
                       </div>
                     ) : (
-                      <div className="rounded border border-border/80 bg-secondary/30 p-2.5 text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">Authorized upload:</span> Upload your local recording to process highlights and vertical framing.
+                      <div className="rounded border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs leading-relaxed text-emerald-200">
+                        <div className="flex items-center gap-2 font-medium text-emerald-300">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Direct Media Ingestion Ready — No Manual Upload Needed
+                        </div>
+                        <p className="mt-1 text-emerald-300/80">
+                          ClipForge will scrape the media directly from the URL, transcribe speech, detect highlights, and generate 9:16 vertical clips automatically.
+                        </p>
                       </div>
                     )}
 
@@ -465,7 +471,7 @@ export function DashboardClient({
                             onClick={() => handleCreateProject(false)}
                             disabled={creating}
                           >
-                            Upload Local Recording Instead
+                            Scrape as VOD / Archive
                           </Button>
                         </>
                       ) : (
@@ -473,11 +479,11 @@ export function DashboardClient({
                           {creating ? (
                             <>
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              Creating Project...
+                              Scraping & Launching Studio...
                             </>
                           ) : (
                             <>
-                              Continue to Upload
+                              Scrape & Generate Clips
                               <ArrowRight className="h-3.5 w-3.5" />
                             </>
                           )}

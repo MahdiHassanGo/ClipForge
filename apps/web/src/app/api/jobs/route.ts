@@ -1,3 +1,4 @@
+import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import {
   OfficialYouTubeMetadataProvider,
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest) {
 
     const isHls = input.youtubeUrl.includes(".m3u8") || input.youtubeUrl.includes("/hls/");
     const isTwitch = input.youtubeUrl.includes("twitch.tv");
+    const isTwitchVod = isTwitch && input.youtubeUrl.includes("/videos/");
 
     let canonicalUrl = input.youtubeUrl;
     let videoId = "video";
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
     let metadataSource: "youtube_data_api" | "oembed" | "none" = "none";
     let notice: string | null = null;
 
-    if (isHls || isTwitch) {
+    if (isHls || (isTwitch && !isTwitchVod)) {
       const channel = isTwitch
         ? input.youtubeUrl.split("twitch.tv/")[1]?.split("/")[0]?.split("?")[0] || "Twitch Stream"
         : "Direct Live HLS";
@@ -64,18 +66,42 @@ export async function POST(request: NextRequest) {
       streamType = "live_stream";
       notice = "Direct live stream monitor active. Audio-first processing and chat velocity spikes enabled.";
     } else {
-      const parsed = parseYouTubeUrl(input.youtubeUrl);
-      canonicalUrl = parsed.canonicalUrl;
-      videoId = parsed.videoId;
-      const metadataProvider = new OfficialYouTubeMetadataProvider();
-      const metadata = await metadataProvider.fetchMetadata(parsed);
-      title = metadata.title;
-      channelTitle = metadata.channelTitle;
-      thumbnailUrl = metadata.thumbnailUrl;
-      durationSec = metadata.durationSec;
-      streamType = metadata.streamType;
-      metadataSource = metadata.metadataSource;
-      notice = metadata.notice;
+      try {
+        const parsed = parseYouTubeUrl(input.youtubeUrl);
+        canonicalUrl = parsed.canonicalUrl;
+        videoId = parsed.videoId;
+        const metadataProvider = new OfficialYouTubeMetadataProvider();
+        const metadata = await metadataProvider.fetchMetadata(parsed);
+        title = metadata.title;
+        channelTitle = metadata.channelTitle;
+        thumbnailUrl = metadata.thumbnailUrl;
+        durationSec = metadata.durationSec;
+        streamType = metadata.streamType;
+        metadataSource = metadata.metadataSource;
+        notice = metadata.notice;
+      } catch {
+        // Non-YouTube URL (podcast audio, Twitch VOD, Kick, direct MP4)
+        const normalized = /^https?:\/\//i.test(input.youtubeUrl)
+          ? input.youtubeUrl
+          : `https://${input.youtubeUrl}`;
+        canonicalUrl = normalized;
+        try {
+          const u = new URL(normalized);
+          const slug = path.basename(u.pathname).replace(/\.[^/.]+$/, "") || "media";
+          videoId = slug.slice(0, 32);
+          title = `${u.hostname} - ${slug.replace(/[-_]+/g, " ")}`;
+          channelTitle = u.hostname;
+        } catch {
+          videoId = "media";
+          title = "Scraped Media Clip";
+        }
+        const isAudio = /\.(mp3|m4a|aac|ogg|wav|flac)(\?.*)?$/i.test(normalized);
+        thumbnailUrl = isAudio
+          ? "https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=640&q=80"
+          : "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=640&q=80";
+        streamType = isAudio ? "regular_video" : "archived_stream";
+        notice = "Direct media link identified. Scraping and highlight analysis active.";
+      }
     }
 
     const isLive = Boolean(input.isLiveStream || streamType === "live_stream");
@@ -84,7 +110,7 @@ export async function POST(request: NextRequest) {
     const job = await prisma.clipJob.create({
       data: {
         userId: user.id,
-        status: isLive ? "live_monitoring" : "queued",
+        status: isLive ? "live_monitoring" : "analyzing",
         isLiveStream: isLive,
         liveManifestUrl: input.liveManifestUrl ?? (isHls ? canonicalUrl : null),
         liveAudioManifestUrl: input.liveAudioManifestUrl ?? null,
@@ -97,12 +123,12 @@ export async function POST(request: NextRequest) {
         youtubeStreamType: streamType,
         metadataSource,
         metadataNotice: notice,
-        sourceProvider: isLive ? "live_stream" : "authorized_upload",
+        sourceProvider: isLive ? "live_stream" : "direct_scrape",
         analysisConfigJson: analysisConfig as unknown as Prisma.InputJsonValue,
-        progressPct: 0,
+        progressPct: isLive ? 0 : 5,
         progressMessage: isLive
           ? "Live stream queued — worker will resolve HLS manifest, pull live audio & monitor chat velocity."
-          : "Awaiting authorized source video upload.",
+          : "Scraping media directly from link (yt-dlp)...",
       },
     });
 
@@ -119,10 +145,10 @@ export async function POST(request: NextRequest) {
           streamType,
           metadataSource,
           notice,
-          mediaAccessAvailable: isLive,
+          mediaAccessAvailable: true,
           mediaAccessReason: isLive
             ? "Live HLS streaming supported directly."
-            : "Authorized upload required for pre-recorded VODs.",
+            : "Direct media scraping active via yt-dlp & FFmpeg. No manual upload required.",
         },
       },
       { status: 201 },

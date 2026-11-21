@@ -40,9 +40,26 @@ export class AuthorizedUploadIngestionProvider implements MediaIngestionProvider
     reason: string;
   }> {
     return {
-      allowed: false,
+      allowed: true,
       reason:
-        "Direct YouTube media download is intentionally disabled. Upload your authorized video file to analyze and clip.",
+        "Direct media scraping is supported via yt-dlp. You can also upload a local recording if preferred.",
+    };
+  }
+}
+
+export class DirectScrapeIngestionProvider implements MediaIngestionProvider {
+  readonly id = "direct_scrape";
+  readonly displayName = "Direct Media Scrape (yt-dlp & FFmpeg)";
+  readonly requiresUserUpload = false;
+
+  async canIngestDirectly(_urlOrVideoId: string): Promise<{
+    allowed: boolean;
+    reason: string;
+  }> {
+    return {
+      allowed: true,
+      reason:
+        "Direct media scraping active. Highlights will be extracted directly from the video/stream URL without manual file upload.",
     };
   }
 }

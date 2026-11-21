@@ -57,8 +57,8 @@ import type {
 import { formatBytes, formatTime, formatTimePrecise } from "@/lib/utils";
 
 const PIPELINE_STEPS: ReadonlyArray<{ key: JobStatus; label: string }> = [
-  { key: "queued", label: "URL Validated" },
-  { key: "uploading", label: "Authorized Upload" },
+  { key: "queued", label: "Link Queued" },
+  { key: "uploading", label: "Media Ingest" },
   { key: "analyzing", label: "Multimodal Analysis" },
   { key: "candidates_ready", label: "Review & Edit" },
   { key: "rendering", label: "9:16 Render" },
@@ -405,6 +405,7 @@ export function JobWorkspaceClient({
   const currentStepIdx = getStepIndex(job.status);
 
   const needsUpload =
+    job.sourceProvider === "authorized_upload" &&
     !job.isLiveStream &&
     (job.status === "queued" || (job.status === "failed" && !job.sourceStorageKey));
 
@@ -504,7 +505,7 @@ export function JobWorkspaceClient({
               })}
             </div>
 
-            {(job.status === "uploading" || job.status === "analyzing" || job.status === "live_monitoring") && (
+            {(job.status === "uploading" || job.status === "analyzing" || job.status === "live_monitoring" || job.status === "queued") && (
               <div className="mt-3 space-y-1.5 rounded border border-primary/20 bg-primary/5 p-3">
                 <div className="flex items-center justify-between text-xs">
                   <span className="flex items-center gap-2 font-medium text-primary">
@@ -565,18 +566,14 @@ export function JobWorkspaceClient({
           </div>
         )}
 
-        {/* Phase A: Authorized Upload View */}
+        {/* Phase A: Optional Manual Upload View (only when explicitly requested) */}
         {needsUpload && (
           <Card>
             <CardHeader>
-              <CardTitle>Step 2: Upload Authorized Source Video</CardTitle>
+              <CardTitle>Upload Source Video</CardTitle>
               <CardDescription>
-                ClipForge validated YouTube video ID{" "}
-                <code className="rounded bg-secondary px-1.5 py-0.5 text-foreground">
-                  {job.youtubeVideoId}
-                </code>{" "}
-                and retrieved permitted metadata only. Upload your recording or VOD file below so our
-                worker can analyze audio reactions, speech, scene cuts, gameplay motion, and face-cam framing.
+                Upload your recording or VOD file below so our worker can analyze audio reactions,
+                speech, scene cuts, gameplay motion, and face-cam framing.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -588,6 +585,23 @@ export function JobWorkspaceClient({
                 }}
               />
             </CardContent>
+          </Card>
+        )}
+
+        {/* Phase A.2: Direct Scraping & Analysis Waiting Card */}
+        {!needsUpload && job.candidates.length === 0 && job.status !== "failed" && (
+          <Card className="border-border/80 bg-card p-8 text-center">
+            <div className="mx-auto flex max-w-md flex-col items-center justify-center space-y-3">
+              <div className="rounded-full bg-primary/10 p-3 text-primary">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+              <h3 className="text-base font-medium text-foreground">
+                {job.progressMessage || "Scraping & analyzing media..."}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                ClipForge is scraping the media directly from the URL, transcribing word timestamps, and analyzing highlights. Detected clip candidates will appear here automatically.
+              </p>
+            </div>
           </Card>
         )}
 

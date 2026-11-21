@@ -58,6 +58,7 @@ export async function POST(
       hasSourceMedia: Boolean(job.sourceStorageKey),
       hasCandidates: job._count.candidates > 0,
       isLiveStream: Boolean(job.isLiveStream),
+      sourceProvider: job.sourceProvider,
       retryCount: job.retryCount,
     });
 

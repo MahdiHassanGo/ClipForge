@@ -20,6 +20,7 @@ import { FfmpegSceneDetectionProvider } from "./scene-provider.js";
 import { FfmpegFaceCamDetectionProvider } from "./facecam-provider.js";
 import { FfmpegVideoRendererProvider } from "./renderer-provider.js";
 import { LiveStreamProcessor } from "./live-stream-processor.js";
+import { scrapeMediaFromUrl } from "./media-scraper.js";
 
 const logger = createLogger("clipforge-worker");
 
@@ -72,8 +73,18 @@ export class ClipWorkerProcessor {
     const candidate = await prisma.clipJob.findFirst({
       where: {
         status: "analyzing",
-        sourceStorageKey: { not: null },
-        OR: [{ workerLockedAt: null }, { workerLockedAt: { lt: staleThreshold } }],
+        AND: [
+          {
+            OR: [
+              { sourceStorageKey: { not: null } },
+              { sourceProvider: "direct_scrape" },
+              { youtubeUrl: { not: "" } },
+            ],
+          },
+          {
+            OR: [{ workerLockedAt: null }, { workerLockedAt: { lt: staleThreshold } }],
+          },
+        ],
       },
       orderBy: { updatedAt: "asc" },
     });
@@ -102,6 +113,8 @@ export class ClipWorkerProcessor {
       await fs.mkdir(workDir, { recursive: true });
       jobLog.info("Starting media analysis job", {
         sourceStorageKey: candidate.sourceStorageKey,
+        sourceProvider: candidate.sourceProvider,
+        youtubeUrl: candidate.youtubeUrl,
       });
 
       const updateProgress = async (pct: number, message: string) => {
@@ -115,10 +128,45 @@ export class ClipWorkerProcessor {
         });
       };
 
-      await updateProgress(8, "Downloading authorized source video to isolated worker...");
-      const ext = path.extname(candidate.sourceFileName ?? ".mp4") || ".mp4";
-      const localVideoPath = path.join(workDir, `source${ext}`);
-      await this.storage.downloadToFile(candidate.sourceStorageKey!, localVideoPath);
+      let localVideoPath: string;
+
+      if (!candidate.sourceStorageKey) {
+        await updateProgress(5, "Scraping media directly from link (yt-dlp)...");
+        jobLog.info("Direct media scraping from URL", { url: candidate.youtubeUrl });
+
+        localVideoPath = await scrapeMediaFromUrl({
+          url: candidate.youtubeUrl,
+          workDir,
+          jobId: candidate.id,
+          userId: candidate.userId,
+          onProgress: (msg) => {
+            void updateProgress(12, msg);
+          },
+        });
+
+        const stat = await fs.stat(localVideoPath);
+        const fileName = path.basename(localVideoPath);
+        const storageKey = `uploads/${candidate.userId}/${candidate.id}/${fileName}`;
+
+        await updateProgress(16, "Syncing media to storage for studio playback...");
+        await this.storage.putFromFile(storageKey, localVideoPath, "video/mp4");
+
+        await prisma.clipJob.update({
+          where: { id: candidate.id },
+          data: {
+            sourceStorageKey: storageKey,
+            sourceFileName: fileName,
+            sourceMimeType: "video/mp4",
+            sourceFileSizeBytes: BigInt(stat.size),
+            sourceProvider: "direct_scrape",
+          },
+        });
+      } else {
+        await updateProgress(8, "Loading source video into isolated worker...");
+        const ext = path.extname(candidate.sourceFileName ?? ".mp4") || ".mp4";
+        localVideoPath = path.join(workDir, `source${ext}`);
+        await this.storage.downloadToFile(candidate.sourceStorageKey, localVideoPath);
+      }
 
       await updateProgress(18, "Probing video & audio streams...");
       const probe = await probeMediaFile(localVideoPath);

@@ -186,6 +186,6 @@ export interface YouTubeMetadataResult {
   streamType: StreamType;
   metadataSource: MetadataSource;
   notice: string;
-  mediaAccessAvailable: false;
+  mediaAccessAvailable: boolean;
   mediaAccessReason: string;
 }
