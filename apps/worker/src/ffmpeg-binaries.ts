@@ -94,7 +94,16 @@ export function runExecFile(
   return new Promise((resolve, reject) => {
     execFile(bin, args, { timeout: timeoutMs, maxBuffer }, (error, stdout, stderr) => {
       if (error) {
-        const errMessage = stderr?.trim() || error.message;
+        const stderrStr = stderr?.toString().trim();
+        const stdoutTail = stdout?.toString().slice(-400).trim();
+        let errMessage: string;
+
+        if (error.killed) {
+          errMessage = `Command timed out after ${Math.round(timeoutMs / 1000)}s. ${stderrStr || stdoutTail || error.message}`;
+        } else {
+          errMessage = stderrStr || stdoutTail || error.message;
+        }
+
         reject(new Error(`Command ${bin} failed: ${errMessage.slice(-800)}`));
         return;
       }

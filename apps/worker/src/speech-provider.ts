@@ -8,8 +8,11 @@ import type {
   TranscriptSegmentData,
   TranscriptWord,
 } from "@clipforge/core";
-import { detectSttStatus, resolveLocalWhisperModelPath } from "@clipforge/core";
+import { createLogger, detectSttStatus, resolveLocalWhisperModelPath } from "@clipforge/core";
 import { resolveFfmpegPath, runExecFile } from "./ffmpeg-binaries.js";
+import { parseVttSubtitles } from "./vtt-parser.js";
+
+const logger = createLogger("clipforge-speech-provider");
 
 interface WhisperVerboseResponse {
   language?: string;
@@ -148,17 +151,34 @@ export class OpenAICompatibleWhisperProvider implements SpeechRecognitionProvide
         headers.Authorization = `Bearer ${this.apiKey}`;
       }
 
-      const response = await fetch(this.endpointUrl, {
-        method: "POST",
-        headers,
-        body: form,
-        signal: AbortSignal.timeout(180_000),
-      });
+      let response: Response | null = null;
+      let errBody = "";
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (chunkIdx > 0 && attempt === 0) {
+          await new Promise((r) => setTimeout(r, 600));
+        }
+        if (attempt > 0) {
+          await new Promise((r) => setTimeout(r, 2000 * Math.pow(2, attempt - 1)));
+        }
 
-      if (!response.ok) {
-        const errBody = await response.text();
+        response = await fetch(this.endpointUrl, {
+          method: "POST",
+          headers,
+          body: form,
+          signal: AbortSignal.timeout(180_000),
+        });
+
+        if (response.ok) break;
+
+        errBody = await response.text();
+        if (response.status !== 429 && response.status < 500) {
+          break;
+        }
+      }
+
+      if (!response || !response.ok) {
         throw new Error(
-          `Transcription provider '${this.name}' failed (${response.status}): ${errBody.slice(0, 300)}`,
+          `Transcription provider '${this.name}' failed (${response?.status ?? "no-response"}): ${errBody.slice(0, 300)}`,
         );
       }
 
@@ -460,9 +480,65 @@ export class HonestFallbackSpeechProvider implements SpeechRecognitionProvider {
   }
 }
 
+export class SubtitleAwareSpeechRecognitionProvider implements SpeechRecognitionProvider {
+  readonly name: string;
+  private readonly inner: SpeechRecognitionProvider;
+
+  constructor(inner: SpeechRecognitionProvider) {
+    this.inner = inner;
+    this.name = inner.name;
+  }
+
+  async transcribe(params: {
+    audioFilePath: string;
+    durationSec: number;
+    languageHint: string;
+    audioTimeline: AudioTimelinePoint[];
+  }): Promise<SpeechRecognitionResult> {
+    const dir = path.dirname(params.audioFilePath);
+    try {
+      const files = await fs.readdir(dir);
+      const vttFile = files.find((f) => f.endsWith(".vtt"));
+      if (vttFile) {
+        const vttPath = path.join(dir, vttFile);
+        const vttContent = await fs.readFile(vttPath, "utf8");
+        const segments = parseVttSubtitles(
+          vttContent,
+          params.languageHint === "auto" ? "en" : params.languageHint,
+        );
+        if (segments.length > 0) {
+          logger.info("Found pre-scraped video subtitles — using direct native captions", {
+            vttFile,
+            segmentCount: segments.length,
+          });
+          return {
+            providerName: "native_video_captions",
+            language: segments[0]?.language ?? "en",
+            segments,
+          };
+        }
+      }
+    } catch (err) {
+      logger.warn("Could not parse local VTT subtitle file, continuing with speech provider", {
+        error: String(err),
+      });
+    }
+
+    return this.inner.transcribe(params);
+  }
+}
+
 export { resolveLocalWhisperModelPath, detectSttStatus };
 
 export function createSpeechRecognitionProvider(
+  env: Record<string, string | undefined> = process.env,
+  baseDir: string = process.cwd(),
+): SpeechRecognitionProvider {
+  const base = resolveBaseSpeechProvider(env, baseDir);
+  return new SubtitleAwareSpeechRecognitionProvider(base);
+}
+
+function resolveBaseSpeechProvider(
   env: Record<string, string | undefined> = process.env,
   baseDir: string = process.cwd(),
 ): SpeechRecognitionProvider {

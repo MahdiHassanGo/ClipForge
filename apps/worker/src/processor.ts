@@ -140,7 +140,11 @@ export class ClipWorkerProcessor {
           jobId: candidate.id,
           userId: candidate.userId,
           onProgress: (msg) => {
-            void updateProgress(12, msg);
+            const pctMatch = /(\d+(?:\.\d+)?)%/.exec(msg);
+            const scaledPct = pctMatch
+              ? Math.min(15, Math.max(5, Math.round(5 + (parseFloat(pctMatch[1]!) / 100) * 10)))
+              : 10;
+            void updateProgress(scaledPct, msg);
           },
         });
 
