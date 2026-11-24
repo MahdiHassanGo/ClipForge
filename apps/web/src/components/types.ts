@@ -1,4 +1,6 @@
 import type {
+  AiAgentActionRecord,
+  AiProviderType,
   AnalysisConfig,
   CandidateStatus,
   CaptionCue,
@@ -14,6 +16,31 @@ import type {
   SignalBreakdown,
   StreamType,
 } from "@clipforge/core/client";
+
+export interface AiProviderDto {
+  id: string;
+  provider: AiProviderType;
+  label: string;
+  model: string;
+  baseUrl: string | null;
+  hasApiKey: boolean;
+  keyPreview: string;
+  isDefault: boolean;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JobChatMessageDto {
+  id: string;
+  jobId: string;
+  role: "user" | "assistant";
+  content: string;
+  provider: AiProviderType | null;
+  model: string | null;
+  actionsJson: AiAgentActionRecord[] | null;
+  createdAt: string;
+}
 
 export interface UserDto {
   id: string;

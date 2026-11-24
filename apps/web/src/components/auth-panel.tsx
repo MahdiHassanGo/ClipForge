@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Clapperboard, Lock, Sparkles, Video } from "lucide-react";
+import { Bot, Clapperboard, KeyRound, Lock, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -48,43 +48,44 @@ export function AuthPanel({ onSuccess }: { onSuccess: (user: UserDto) => void })
   }
 
   return (
-    <div className="mx-auto grid max-w-5xl gap-8 px-4 py-12 lg:grid-cols-2 lg:items-center">
-      <div className="space-y-6">
-        <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-          <Sparkles className="h-3.5 w-3.5" />
-          Synchronized Multimodal Gaming Clipping
-        </div>
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-          Turn long gaming VODs into punchy 9:16 vertical highlights.
+    <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 lg:grid-cols-12 lg:items-center sm:px-6">
+      <div className="space-y-6 lg:col-span-7">
+        <p className="text-xs font-medium text-primary">
+          Local-first gaming &amp; stream clipping studio
+        </p>
+        <h1 className="text-3xl font-medium tracking-tight text-foreground sm:text-5xl sm:leading-[1.08]">
+          Turn long streams and VODs into edited 9:16 vertical clips
         </h1>
-        <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
-          Paste a YouTube link to inspect permitted metadata, upload your authorized
-          recording, and let our background worker detect high-impact plays using
-          speech timestamps, audio reaction contrast, gameplay motion, scene cuts,
-          and face-cam framing.
+        <p className="max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+          Paste a YouTube, Twitch, or media link, analyze speech and gameplay peaks locally, and chat with your own Claude, ChatGPT, or OpenRouter model to find exact moments and apply edits.
         </p>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border border-border bg-card/70 p-3.5">
-            <Video className="mb-2 h-4 w-4 text-primary" />
-            <p className="text-sm font-medium">Honest Source Ingestion</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Never scrapes or downloads YouTube videos. Processes your authorized
-              files securely in isolated worker jobs.
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <Video className="mb-2.5 h-4 w-4 text-primary" />
+            <p className="text-sm font-medium text-foreground">Direct Media Ingest</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Scrape VODs, monitor live HLS streams, or upload recordings into isolated jobs
             </p>
           </div>
-          <div className="rounded-lg border border-border bg-card/70 p-3.5">
-            <Lock className="mb-2 h-4 w-4 text-emerald-400" />
-            <p className="text-sm font-medium">Private Per-User Workspace</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              All uploads, candidate clips, captions, and rendered MP4 exports are
-              scoped strictly to your account.
+          <div className="rounded-xl border border-border bg-card p-4">
+            <Bot className="mb-2.5 h-4 w-4 text-accent" />
+            <p className="text-sm font-medium text-foreground">AI Video Director</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Chat with your video to locate moments, trim boundaries, and style 9:16 layouts
+            </p>
+          </div>
+          <div className="rounded-xl border border-border bg-card p-4">
+            <KeyRound className="mb-2.5 h-4 w-4 text-emerald-400" />
+            <p className="text-sm font-medium text-foreground">Bring Your Own Keys</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Connect Claude, ChatGPT, OpenRouter, Gemini, Groq, or local Ollama models
             </p>
           </div>
         </div>
       </div>
 
-      <Card className="border-border/80 bg-card/95 shadow-xl">
+      <Card className="lg:col-span-5">
         <CardHeader>
           <div className="mb-2 flex items-center gap-2">
             <Clapperboard className="h-5 w-5 text-primary" />
@@ -94,8 +95,8 @@ export function AuthPanel({ onSuccess }: { onSuccess: (user: UserDto) => void })
           </div>
           <CardDescription>
             {mode === "register"
-              ? "Your jobs, authorized uploads, and rendered MP4s stay private to your account."
-              : "Sign in to resume your clip jobs and download vertical exports."}
+              ? "Your projects, encrypted API keys, and rendered MP4 exports stay private to your workspace."
+              : "Sign in to resume your clip projects and AI workflows."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -106,9 +107,9 @@ export function AuthPanel({ onSuccess }: { onSuccess: (user: UserDto) => void })
                 setMode("register");
                 setError(null);
               }}
-              className={`rounded-md py-2 transition ${
+              className={`cursor-pointer rounded-md py-2 transition-colors ${
                 mode === "register"
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-card text-foreground"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -120,9 +121,9 @@ export function AuthPanel({ onSuccess }: { onSuccess: (user: UserDto) => void })
                 setMode("login");
                 setError(null);
               }}
-              className={`rounded-md py-2 transition ${
+              className={`cursor-pointer rounded-md py-2 transition-colors ${
                 mode === "login"
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-card text-foreground"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -134,7 +135,7 @@ export function AuthPanel({ onSuccess }: { onSuccess: (user: UserDto) => void })
             {mode === "register" && (
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-muted-foreground">
-                  Display Name
+                  Display name
                 </label>
                 <Input
                   value={name}
@@ -172,12 +173,13 @@ export function AuthPanel({ onSuccess }: { onSuccess: (user: UserDto) => void })
             </div>
 
             {error && (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-red-300">
+              <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-rose-300">
                 {error}
               </div>
             )}
 
             <Button type="submit" className="w-full" disabled={submitting}>
+              <Lock className="h-3.5 w-3.5" />
               {submitting
                 ? "Please wait..."
                 : mode === "register"

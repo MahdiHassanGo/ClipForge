@@ -17,7 +17,7 @@ export function Progress({
       )}
     >
       <div
-        className="h-full bg-primary transition-all duration-300"
+        className="h-full bg-primary transition-[width] duration-300 ease-out"
         style={{ width: `${clamped}%` }}
       />
     </div>

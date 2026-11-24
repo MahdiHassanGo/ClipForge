@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowRight,
+  Bot,
+  Check,
   CheckCircle2,
   Clock,
   ExternalLink,
@@ -13,6 +15,7 @@ import {
   FolderOpen,
   HardDrive,
   Info,
+  KeyRound,
   Link2,
   Loader2,
   Radio,
@@ -21,6 +24,7 @@ import {
   Video,
 } from "lucide-react";
 import {
+  AI_PROVIDER_CATALOG,
   SUPPORTED_CAPTION_LANGUAGES,
   type JobStatus,
   type StreamType,
@@ -40,6 +44,7 @@ import { Progress } from "@/components/ui/progress";
 import { Navbar } from "@/components/navbar";
 import { AuthPanel } from "@/components/auth-panel";
 import type {
+  AiProviderDto,
   CapabilitiesDto,
   ClipJobSummaryDto,
   UserDto,
@@ -90,13 +95,16 @@ function jobStatusBadge(status: JobStatus): {
 export function DashboardClient({
   initialUser,
   initialCapabilities,
+  initialAiProviders = [],
 }: {
   initialUser: UserDto | null;
   initialCapabilities: CapabilitiesDto;
+  initialAiProviders?: AiProviderDto[];
 }) {
   const router = useRouter();
   const [user, setUser] = useState<UserDto | null>(initialUser);
   const [capabilities] = useState<CapabilitiesDto>(initialCapabilities);
+  const [aiProviders, setAiProviders] = useState<AiProviderDto[]>(initialAiProviders);
 
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [inspecting, setInspecting] = useState(false);
@@ -207,6 +215,12 @@ export function DashboardClient({
     if (!user) return;
     void fetchJobs();
     void fetchStorageInfo();
+    void fetch("/api/ai/providers")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.providers) setAiProviders(data.providers);
+      })
+      .catch(() => {});
     const timer = setInterval(() => {
       void fetch("/api/jobs")
         .then((r) => (r.ok ? r.json() : null))
@@ -303,23 +317,54 @@ export function DashboardClient({
     );
   }
 
+  const activeAi =
+    aiProviders.find((p) => p.isEnabled && p.isDefault) ??
+    aiProviders.find((p) => p.isEnabled) ??
+    null;
+
   return (
     <div className="min-h-screen pb-16">
-      <Navbar user={user} capabilities={capabilities} />
+      <Navbar user={user} capabilities={capabilities} aiProviders={aiProviders} />
 
-      <main className="mx-auto max-w-7xl space-y-8 px-4 pt-8 sm:px-6">
+      <main className="mx-auto max-w-7xl space-y-6 px-4 pt-8 sm:px-6">
+        {/* AI Video Director Key Connection Status */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 text-xs">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-accent/30 bg-accent/10 text-accent">
+              <Bot className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="font-medium text-foreground">
+                {activeAi
+                  ? `AI Video Director ready: ${AI_PROVIDER_CATALOG[activeAi.provider].shortName} (${activeAi.model})`
+                  : "Connect Claude, ChatGPT, OpenRouter, or a local model key"}
+              </p>
+              <p className="text-muted-foreground">
+                {activeAi
+                  ? `${aiProviders.length} connected model configuration${aiProviders.length === 1 ? "" : "s"} encrypted locally for project chat and automated clip editing`
+                  : "Add your own API key so you can chat with scraped videos and streams to locate moments and apply edits"}
+              </p>
+            </div>
+          </div>
+          <Link href="/settings/ai">
+            <Button size="sm" variant={activeAi ? "outline" : "default"}>
+              <KeyRound className="h-3.5 w-3.5" />
+              {activeAi ? "Manage AI Keys" : "Connect AI Key"}
+            </Button>
+          </Link>
+        </div>
+
         {/* Storage safety alert when internal space is low */}
         {storageInfo?.isLowSpace && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-xs text-rose-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-xs text-rose-200">
             <div className="flex items-start gap-2.5">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
               <div>
-                <p className="font-semibold text-rose-100">
-                  Storage Warning: Your current download drive only has {storageInfo.currentFreeFormatted} free space left!
+                <p className="font-medium text-rose-100">
+                  Storage warning: your current download drive has {storageInfo.currentFreeFormatted} free space left
                 </p>
                 <p className="mt-0.5 text-rose-200/80">
-                  Fetching long video streams or rendering vertical clips on this drive may run out of space.
-                  Switch to an external drive to save all clips safely.
+                  Fetching long video streams or rendering vertical clips on this drive may run out of space. Switch to an external drive to save clips safely.
                 </p>
               </div>
             </div>
@@ -331,7 +376,7 @@ export function DashboardClient({
                   handleApplyStorage(storageInfo.volumes.find((v) => v.isRecommended)!.clipForgePath)
                 }
                 disabled={updatingStorage}
-                className="border-rose-500/40 text-xs text-rose-100 hover:bg-rose-500/20"
+                className="border-destructive/40 text-xs text-rose-100 hover:bg-destructive/20"
               >
                 Switch to {storageInfo.volumes.find((v) => v.isRecommended)!.name} (
                 {storageInfo.volumes.find((v) => v.isRecommended)!.freeFormatted} free)
@@ -342,17 +387,17 @@ export function DashboardClient({
 
         {/* Honest capability & setup status bar */}
         {(!capabilities.youtubeApiConfigured || !capabilities.whisperConfigured) && (
-          <div className="flex flex-wrap items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+          <div className="flex flex-wrap items-start gap-3 rounded-xl border border-primary/30 bg-primary/10 p-4 text-xs text-foreground">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <div className="space-y-1">
-              <p className="font-medium text-amber-100">
-                Optional API integrations not configured — upload-based clipping works right now
+              <p className="font-medium text-foreground">
+                Optional media environment keys not set in .env
               </p>
-              <p className="text-amber-200/85">
+              <p className="text-muted-foreground">
                 {!capabilities.youtubeApiConfigured &&
-                  "Set free YOUTUBE_API_KEY in .env to classify live vs. archived streams and duration (currently using free official YouTube oEmbed). "}
+                  "Set YOUTUBE_API_KEY in .env for full YouTube Data API classification (currently using oEmbed). "}
                 {!capabilities.whisperConfigured &&
-                  "Add a free GROQ_API_KEY (recommended) or local whisper.cpp model in .env for automatic word-level captions (currently using free audio/motion/scene/face-cam analysis + manual caption review)."}
+                  "Add GROQ_API_KEY or a local whisper.cpp model in .env for automatic word-level captions."}
               </p>
             </div>
           </div>
@@ -597,9 +642,9 @@ export function DashboardClient({
                               onClick={() => handleApplyStorage(vol.clipForgePath)}
                               disabled={updatingStorage}
                             >
-                              <FolderOpen className="h-3 w-3 mr-1" />
+                              <FolderOpen className="mr-1 h-3 w-3" />
                               {vol.name} ({vol.freeFormatted} free)
-                              {vol.isRecommended && <span className="ml-1 text-[9px] opacity-75">★ Rec</span>}
+                              {vol.isRecommended && <span className="ml-1 text-[10px] opacity-80">Recommended</span>}
                             </Button>
                           );
                         })}
@@ -612,7 +657,10 @@ export function DashboardClient({
                       </div>
 
                       {storageSuccessMsg && (
-                        <p className="text-[11px] text-emerald-400 font-medium">✓ {storageSuccessMsg}</p>
+                        <p className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-400">
+                          <Check className="h-3.5 w-3.5" />
+                          {storageSuccessMsg}
+                        </p>
                       )}
                     </div>
 
@@ -682,8 +730,8 @@ export function DashboardClient({
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold tracking-tight text-foreground uppercase tracking-wider text-muted-foreground">
-                Recent Projects
+              <h2 className="text-sm font-medium text-foreground">
+                Recent projects
               </h2>
             </div>
             <span className="text-xs text-muted-foreground tabular-nums">{jobs.length} projects</span>

@@ -44,6 +44,28 @@ export type CaptionStyle =
 
 export type ExportPreset = "youtube_shorts" | "tiktok" | "instagram_reels";
 
+export type AiProviderType =
+  | "anthropic"
+  | "openai"
+  | "openrouter"
+  | "google"
+  | "groq"
+  | "custom";
+
+export interface AiAgentActionRecord {
+  tool:
+    | "search_transcript"
+    | "get_timeline_events"
+    | "create_clip_candidate"
+    | "update_clip_candidate"
+    | "queue_clip_render";
+  summary: string;
+  clipId?: string;
+  startSec?: number;
+  endSec?: number;
+  status: "ok" | "error";
+}
+
 export interface FaceCamRegion {
   /** Normalized 0..1 coordinates relative to source video dimensions */
   x: number;

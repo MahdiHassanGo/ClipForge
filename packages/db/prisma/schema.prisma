@@ -81,6 +81,15 @@ enum RenderStatus {
   cancelled
 }
 
+enum AiProviderType {
+  anthropic
+  openai
+  openrouter
+  google
+  groq
+  custom
+}
+
 model User {
   id           String         @id @default(cuid())
   email        String         @unique
@@ -93,6 +102,8 @@ model User {
   jobs          ClipJob[]
   renderExports RenderExport[]
   liveSessions  LiveSession[]
+  aiProviders   AiProviderConfig[]
+  chatMessages  JobChatMessage[]
 }
 
 model Session {
@@ -176,6 +187,7 @@ model ClipJob {
   sceneEvents        SceneEvent[]
   candidates         CandidateClip[]
   renderExports      RenderExport[]
+  chatMessages       JobChatMessage[]
 
   @@index([userId, createdAt])
   @@index([status, workerLockedAt])
@@ -323,4 +335,42 @@ model RenderExport {
   @@index([userId, createdAt])
   @@index([jobId, status])
   @@index([status, workerLockedAt])
+}
+
+model AiProviderConfig {
+  id              String         @id @default(cuid())
+  userId          String
+  provider        AiProviderType
+  label           String
+  model           String
+  baseUrl         String?
+  encryptedApiKey String?
+  keyLast4        String?
+  isDefault       Boolean        @default(false)
+  isEnabled       Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, isDefault])
+}
+
+model JobChatMessage {
+  id          String          @id @default(cuid())
+  jobId       String
+  userId      String
+  role        String
+  content     String
+  provider    AiProviderType?
+  model       String?
+  actionsJson Json?
+  createdAt   DateTime        @default(now())
+
+  job  ClipJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, createdAt])
+  @@index([userId, createdAt])
 }

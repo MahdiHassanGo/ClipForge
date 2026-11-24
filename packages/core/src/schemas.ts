@@ -68,6 +68,25 @@ export const faceCamRegionSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
+export function normalizeFaceCamRegion(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.x !== "number" ||
+    !Number.isFinite(candidate.x) ||
+    typeof candidate.y !== "number" ||
+    !Number.isFinite(candidate.y) ||
+    typeof candidate.width !== "number" ||
+    !Number.isFinite(candidate.width) ||
+    typeof candidate.height !== "number" ||
+    !Number.isFinite(candidate.height)
+  ) {
+    return null;
+  }
+  const parsed = faceCamRegionSchema.safeParse(candidate);
+  return parsed.success ? parsed.data : null;
+}
+
 export const captionCueSchema = z
   .object({
     id: z.string().min(1).max(120),
@@ -109,7 +128,10 @@ export const updateCandidateSchema = z
     endSec: z.number().positive().optional(),
     status: candidateStatusSchema.optional(),
     layoutMode: layoutModeSchema.optional(),
-    faceCamCrop: faceCamRegionSchema.nullable().optional(),
+    faceCamCrop: z.preprocess(
+      (val) => (val === undefined ? undefined : normalizeFaceCamRegion(val)),
+      faceCamRegionSchema.nullable().optional(),
+    ),
     captionLanguage: z
       .enum(["auto", "en", "es", "fr", "de", "pt", "ja", "ko", "hi"])
       .optional(),
@@ -139,6 +161,74 @@ export const createRenderRequestSchema = z.object({
     .array(exportPresetSchema)
     .min(1, "Select at least one export preset.")
     .max(3),
+});
+
+export const aiProviderTypeSchema = z.enum([
+  "anthropic",
+  "openai",
+  "openrouter",
+  "google",
+  "groq",
+  "custom",
+]);
+
+export const createAiProviderSchema = z
+  .object({
+    provider: aiProviderTypeSchema,
+    label: z.string().trim().min(1, "Label is required.").max(80),
+    model: z.string().trim().min(1, "Model ID is required.").max(120),
+    baseUrl: z
+      .string()
+      .trim()
+      .max(500)
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : undefined))
+      .refine((v) => !v || /^https?:\/\/.+/.test(v), {
+        message: "Base URL must start with http:// or https://.",
+      }),
+    apiKey: z.string().trim().max(512).optional(),
+    isDefault: z.boolean().optional().default(false),
+  })
+  .refine(
+    (data) => {
+      if (data.provider === "custom") return true;
+      return Boolean(data.apiKey && data.apiKey.length >= 6);
+    },
+    {
+      message: "API key is required for this provider.",
+      path: ["apiKey"],
+    },
+  );
+
+export const updateAiProviderSchema = z.object({
+  label: z.string().trim().min(1).max(80).optional(),
+  model: z.string().trim().min(1).max(120).optional(),
+  baseUrl: z
+    .string()
+    .trim()
+    .max(500)
+    .nullable()
+    .optional()
+    .refine((v) => !v || /^https?:\/\/.+/.test(v), {
+      message: "Base URL must start with http:// or https://.",
+    }),
+  apiKey: z.string().trim().max(512).optional(),
+  isDefault: z.boolean().optional(),
+  isEnabled: z.boolean().optional(),
+});
+
+export const testAiProviderSchema = z.object({
+  providerId: z.string().min(1).optional(),
+  provider: aiProviderTypeSchema.optional(),
+  model: z.string().trim().min(1).max(120).optional(),
+  baseUrl: z.string().trim().max(500).optional(),
+  apiKey: z.string().trim().max(512).optional(),
+});
+
+export const jobChatRequestSchema = z.object({
+  message: z.string().trim().min(1, "Message cannot be empty.").max(4000),
+  providerId: z.string().min(1).optional(),
+  selectedClipId: z.string().min(1).optional(),
 });
 
 export function validateCandidateBounds(input: {

@@ -4,6 +4,7 @@ import {
   assertJobTransition,
   assertResourceOwnership,
   createRenderRequestSchema,
+  normalizeFaceCamRegion,
 } from "@clipforge/core";
 import { prisma, Prisma } from "@clipforge/db";
 import { requireUser } from "@/lib/session";
@@ -112,6 +113,7 @@ export async function POST(
           continue;
         }
 
+        const validClipFaceCam = normalizeFaceCamRegion(clip.faceCamCropJson);
         const record = await prisma.renderExport.create({
           data: {
             jobId: job.id,
@@ -125,7 +127,12 @@ export async function POST(
             captionStyle: clip.captionStyle,
             captionLanguage: clip.captionLanguage,
             captionsEnabled: clip.captionsEnabled,
-            faceCamCropJson: (clip.faceCamCropJson ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+            ...(validClipFaceCam
+              ? {
+                  faceCamCropJson:
+                    validClipFaceCam as unknown as Prisma.InputJsonValue,
+                }
+              : {}),
             captionsJson: clip.captionsJson as unknown as Prisma.InputJsonValue,
             progressPct: 0,
             progressMessage: "Queued for vertical 9:16 render...",

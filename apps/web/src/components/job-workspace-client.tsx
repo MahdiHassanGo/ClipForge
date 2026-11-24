@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   AlertTriangle,
   ArrowLeft,
+  Bot,
   Camera,
   Check,
   CheckCircle2,
@@ -19,7 +20,6 @@ import {
   RotateCcw,
   Save,
   Scissors,
-  Sparkles,
   Subtitles,
   Trash2,
   XCircle,
@@ -27,6 +27,7 @@ import {
 import {
   EXPORT_PRESETS,
   SUPPORTED_CAPTION_LANGUAGES,
+  normalizeFaceCamRegion,
   type CaptionCue,
   type CaptionStyle,
   type ExportPreset,
@@ -47,10 +48,13 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Navbar } from "@/components/navbar";
 import { UploadZone } from "@/components/upload-zone";
+import { AiDirectorChat } from "@/components/ai-director-chat";
 import type {
+  AiProviderDto,
   CandidateClipDto,
   CapabilitiesDto,
   ClipJobDetailDto,
+  JobChatMessageDto,
   RenderExportDto,
   UserDto,
 } from "@/components/types";
@@ -85,16 +89,20 @@ export function JobWorkspaceClient({
   user,
   capabilities,
   initialJob,
+  initialAiProviders = [],
+  initialChatMessages = [],
 }: {
   user: UserDto;
   capabilities: CapabilitiesDto;
   initialJob: ClipJobDetailDto;
+  initialAiProviders?: AiProviderDto[];
+  initialChatMessages?: JobChatMessageDto[];
 }) {
   const [job, setJob] = useState<ClipJobDetailDto>(initialJob);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(
     initialJob.candidates[0]?.id ?? null,
   );
-  const [activeTab, setActiveTab] = useState<"layout" | "captions" | "export">("layout");
+  const [activeTab, setActiveTab] = useState<"ai_chat" | "layout" | "captions" | "export">("ai_chat");
 
   // Local editable draft state for the currently selected clip
   const [draftTitle, setDraftTitle] = useState("");
@@ -134,10 +142,10 @@ export function JobWorkspaceClient({
   useEffect(() => {
     if (!selectedClip) return;
     setDraftTitle(selectedClip.title);
-    setDraftStart(selectedClip.startSec);
-    setDraftEnd(selectedClip.endSec);
+    setDraftStart(Number.isFinite(selectedClip.startSec) ? selectedClip.startSec : 0);
+    setDraftEnd(Number.isFinite(selectedClip.endSec) ? selectedClip.endSec : 30);
     setDraftLayout(selectedClip.layoutMode);
-    setDraftFaceCam(selectedClip.faceCamCropJson);
+    setDraftFaceCam(normalizeFaceCamRegion(selectedClip.faceCamCropJson));
     setDraftCaptionsEnabled(selectedClip.captionsEnabled);
     setDraftCaptionLang(selectedClip.captionLanguage);
     setDraftCaptionStyle(selectedClip.captionStyle);
@@ -233,11 +241,11 @@ export function JobWorkspaceClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: draftTitle,
-          startSec: Number(draftStart),
-          endSec: Number(draftEnd),
+          startSec: Number.isFinite(Number(draftStart)) ? Number(draftStart) : selectedClip.startSec,
+          endSec: Number.isFinite(Number(draftEnd)) ? Number(draftEnd) : selectedClip.endSec,
           status: override?.status ?? selectedClip.status,
           layoutMode: draftLayout,
-          faceCamCrop: draftFaceCam,
+          faceCamCrop: normalizeFaceCamRegion(draftFaceCam),
           captionLanguage: draftCaptionLang,
           captionStyle: draftCaptionStyle,
           captionsEnabled: draftCaptionsEnabled,
@@ -411,7 +419,11 @@ export function JobWorkspaceClient({
 
   return (
     <div className="min-h-screen pb-16">
-      <Navbar user={user} capabilities={capabilities} />
+      <Navbar
+        user={user}
+        capabilities={capabilities}
+        aiProviders={initialAiProviders}
+      />
 
       <main className="mx-auto max-w-7xl space-y-6 px-4 pt-6 sm:px-6">
         {/* Top Breadcrumb + Job Header */}
@@ -497,7 +509,7 @@ export function JobWorkspaceClient({
                     }`}
                   >
                     <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-[10px] tabular-nums font-mono">
-                      {isDone ? "✓" : idx + 1}
+                      {isDone ? <Check className="h-3 w-3" /> : idx + 1}
                     </span>
                     <span className="truncate">{step.label}</span>
                   </div>
@@ -589,10 +601,14 @@ export function JobWorkspaceClient({
         )}
 
         {/* Phase A.2: Direct Scraping & Analysis Waiting Card */}
-        {!needsUpload && job.candidates.length === 0 && job.status !== "failed" && (
-          <Card className="border-border/80 bg-card p-8 text-center">
+        {!needsUpload &&
+          job.candidates.length === 0 &&
+          job.status !== "failed" &&
+          job.status !== "candidates_ready" &&
+          job.status !== "complete" && (
+          <Card className="p-8 text-center">
             <div className="mx-auto flex max-w-md flex-col items-center justify-center space-y-3">
-              <div className="rounded-full bg-primary/10 p-3 text-primary">
+              <div className="rounded-full bg-primary/15 p-3 text-primary">
                 <Loader2 className="h-6 w-6 animate-spin" />
               </div>
               <h3 className="text-base font-medium text-foreground">
@@ -605,17 +621,48 @@ export function JobWorkspaceClient({
           </Card>
         )}
 
+        {/* Phase A.3: Analysis Ready with 0 Auto Candidates — Open AI Director Directly */}
+        {!needsUpload &&
+          job.candidates.length === 0 &&
+          (job.status === "candidates_ready" || job.status === "complete") && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bot className="h-4 w-4 text-accent" />
+                Ask AI Video Director to find moments
+              </CardTitle>
+              <CardDescription>
+                No clips crossed the automatic threshold yet. Chat with your connected Claude, ChatGPT, or OpenRouter model to search the transcript and create custom clips.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AiDirectorChat
+                jobId={job.id}
+                aiProviders={initialAiProviders}
+                initialMessages={initialChatMessages}
+                selectedClipId={selectedClipId}
+                hasAnalysisData
+                onJobUpdated={refreshJob}
+                onSelectClip={(clipId, seekSec) => {
+                  setSelectedClipId(clipId);
+                  if (seekSec !== undefined) seekTo(seekSec);
+                }}
+              />
+            </CardContent>
+          </Card>
+        )}
+
         {/* Phase B: Review, Edit, Caption & 9:16 Export Studio */}
         {!needsUpload && job.candidates.length > 0 && (
           <div className="grid gap-6 lg:grid-cols-12">
             {/* LEFT COLUMN: Candidate Clips List */}
             <div className="space-y-3 lg:col-span-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                  Detected Moments ({job.candidates.length})
+                <h2 className="text-sm font-medium text-foreground">
+                  Detected moments ({job.candidates.length})
                 </h2>
-                <Badge variant="default">
-                  {selectedCandidates.length} selected for export
+                <Badge variant="default" className="tabular-nums">
+                  {selectedCandidates.length} selected
                 </Badge>
               </div>
 
@@ -908,10 +955,10 @@ export function JobWorkspaceClient({
                                   onClick={() => seekTo(ev.timestampSec)}
                                   className={`absolute bottom-0 w-1 hover:opacity-100 ${
                                     ev.type === "audio_reaction" || ev.type === "silence_to_burst"
-                                      ? "bg-amber-400/80"
+                                      ? "bg-primary/90"
                                       : ev.type === "scene_cut"
-                                        ? "bg-violet-400/80"
-                                        : "bg-emerald-400/70"
+                                        ? "bg-sky-400/85"
+                                        : "bg-accent/85"
                                   }`}
                                   style={{
                                     left: `${Math.min(99.5, (ev.timestampSec / job.mediaDurationSec!) * 100)}%`,
@@ -929,15 +976,15 @@ export function JobWorkspaceClient({
                             </div>
                             <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground">
                               <span className="flex items-center gap-1">
-                                <span className="h-2 w-2 rounded-full bg-amber-400" />
+                                <span className="h-2 w-2 rounded-full bg-primary" />
                                 Audio Reaction
                               </span>
                               <span className="flex items-center gap-1">
-                                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                                <span className="h-2 w-2 rounded-full bg-accent" />
                                 Gameplay Motion
                               </span>
                               <span className="flex items-center gap-1">
-                                <span className="h-2 w-2 rounded-full bg-violet-400" />
+                                <span className="h-2 w-2 rounded-full bg-sky-400" />
                                 Scene Cut
                               </span>
                             </div>
@@ -952,11 +999,14 @@ export function JobWorkspaceClient({
                               type="number"
                               step={0.5}
                               min={0}
-                              max={Math.max(0, draftEnd - 3)}
-                              value={draftStart}
+                              max={Number.isFinite(draftEnd) ? Math.max(0, draftEnd - 3) : 0}
+                              value={Number.isFinite(draftStart) ? draftStart : 0}
                               onChange={(e) => {
-                                setDraftStart(Number(e.target.value));
-                                setIsDirty(true);
+                                const val = e.target.value === "" ? 0 : Number(e.target.value);
+                                if (Number.isFinite(val)) {
+                                  setDraftStart(val);
+                                  setIsDirty(true);
+                                }
                               }}
                             />
                           </label>
@@ -965,12 +1015,15 @@ export function JobWorkspaceClient({
                             <Input
                               type="number"
                               step={0.5}
-                              min={draftStart + 3}
+                              min={Number.isFinite(draftStart) ? draftStart + 3 : 3}
                               max={job.mediaDurationSec ?? 9999}
-                              value={draftEnd}
+                              value={Number.isFinite(draftEnd) ? draftEnd : 3}
                               onChange={(e) => {
-                                setDraftEnd(Number(e.target.value));
-                                setIsDirty(true);
+                                const val = e.target.value === "" ? 3 : Number(e.target.value);
+                                if (Number.isFinite(val)) {
+                                  setDraftEnd(val);
+                                  setIsDirty(true);
+                                }
                               }}
                             />
                           </label>
@@ -1001,6 +1054,14 @@ export function JobWorkspaceClient({
                       <div className="flex flex-wrap gap-2">
                         <Button
                           size="sm"
+                          variant={activeTab === "ai_chat" ? "default" : "secondary"}
+                          onClick={() => setActiveTab("ai_chat")}
+                        >
+                          <Bot className="h-3.5 w-3.5" />
+                          AI Director Chat
+                        </Button>
+                        <Button
+                          size="sm"
                           variant={activeTab === "layout" ? "default" : "secondary"}
                           onClick={() => setActiveTab("layout")}
                         >
@@ -1015,7 +1076,7 @@ export function JobWorkspaceClient({
                           <Subtitles className="h-3.5 w-3.5" />
                           Captions ({draftCaptions.length})
                           {unreviewedCount > 0 && (
-                            <span className="ml-1 rounded-full bg-amber-500/25 px-1.5 text-[10px] text-amber-200">
+                            <span className="ml-1 rounded-full bg-primary/25 px-1.5 text-[10px] text-primary">
                               {unreviewedCount} review
                             </span>
                           )}
@@ -1032,6 +1093,27 @@ export function JobWorkspaceClient({
                     </CardHeader>
 
                     <CardContent>
+                      {/* TAB 0: AI VIDEO DIRECTOR CHAT */}
+                      {activeTab === "ai_chat" && (
+                        <AiDirectorChat
+                          jobId={job.id}
+                          aiProviders={initialAiProviders}
+                          initialMessages={initialChatMessages}
+                          selectedClipId={selectedClipId}
+                          hasAnalysisData={
+                            job.status === "candidates_ready" ||
+                            job.status === "complete" ||
+                            job.status === "rendering" ||
+                            job.candidates.length > 0
+                          }
+                          onJobUpdated={refreshJob}
+                          onSelectClip={(clipId, seekSec) => {
+                            setSelectedClipId(clipId);
+                            if (seekSec !== undefined) seekTo(seekSec);
+                          }}
+                        />
+                      )}
+
                       {/* TAB 1: 9:16 LAYOUT & FACE-CAM */}
                       {activeTab === "layout" && (
                         <div className="grid gap-6 md:grid-cols-12">
@@ -1065,7 +1147,7 @@ export function JobWorkspaceClient({
                                     type="button"
                                     onClick={() => {
                                       setDraftLayout(opt.id);
-                                      if (opt.id !== "gameplay_focus" && !draftFaceCam) {
+                                      if (opt.id !== "gameplay_focus" && !normalizeFaceCamRegion(draftFaceCam)) {
                                         setDraftFaceCam({
                                           ...CORNER_PRESETS.bottom_left,
                                           confidence: 1,
@@ -1128,38 +1210,41 @@ export function JobWorkspaceClient({
                                   )}
                                 </div>
 
-                                {draftFaceCam && (
+                                {draftFaceCam && normalizeFaceCamRegion(draftFaceCam) && (
                                   <div className="grid grid-cols-4 gap-2 text-xs">
                                     {(
                                       [
-                                        ["x", "X %"],
-                                        ["y", "Y %"],
-                                        ["width", "W %"],
-                                        ["height", "H %"],
+                                        ["x", "X %", 0, 95],
+                                        ["y", "Y %", 0, 95],
+                                        ["width", "W %", 5, 100],
+                                        ["height", "H %", 5, 100],
                                       ] as const
-                                    ).map(([field, label]) => (
-                                      <label key={field} className="space-y-1">
-                                        <span className="text-muted-foreground">{label}</span>
-                                        <Input
-                                          type="number"
-                                          min={0}
-                                          max={95}
-                                          value={Math.round(draftFaceCam[field] * 100)}
-                                          onChange={(e) => {
-                                            const pct = Math.max(
-                                              0,
-                                              Math.min(95, Number(e.target.value)),
-                                            );
-                                            setDraftFaceCam({
-                                              ...draftFaceCam,
-                                              corner: "custom",
-                                              [field]: pct / 100,
-                                            });
-                                            setIsDirty(true);
-                                          }}
-                                        />
-                                      </label>
-                                    ))}
+                                    ).map(([field, label, minPct, maxPct]) => {
+                                      const raw = draftFaceCam[field];
+                                      const pctVal = Number.isFinite(raw) ? Math.round(raw * 100) : minPct;
+                                      return (
+                                        <label key={field} className="space-y-1">
+                                          <span className="text-muted-foreground">{label}</span>
+                                          <Input
+                                            type="number"
+                                            min={minPct}
+                                            max={maxPct}
+                                            value={pctVal}
+                                            onChange={(e) => {
+                                              const parsed = e.target.value === "" ? minPct : Number(e.target.value);
+                                              if (!Number.isFinite(parsed)) return;
+                                              const pct = Math.max(minPct, Math.min(maxPct, parsed));
+                                              setDraftFaceCam({
+                                                ...draftFaceCam,
+                                                corner: "custom",
+                                                [field]: pct / 100,
+                                              });
+                                              setIsDirty(true);
+                                            }}
+                                          />
+                                        </label>
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </div>
@@ -1171,25 +1256,25 @@ export function JobWorkspaceClient({
                             <p className="mb-2 text-xs text-muted-foreground">
                               9:16 Framing & Platform Safe Zones
                             </p>
-                            <div className="relative h-72 w-40 overflow-hidden rounded-2xl border-2 border-border bg-slate-950 shadow-inner">
+                            <div className="relative h-72 w-40 overflow-hidden rounded-2xl border-2 border-border bg-background shadow-inner">
                               {draftLayout === "split_cam_top" ? (
                                 <>
-                                  <div className="flex h-[30%] items-center justify-center border-b border-primary/40 bg-primary/20 text-[10px] font-medium text-primary">
+                                  <div className="flex h-[30%] items-center justify-center border-b border-primary/40 bg-primary/15 text-[10px] font-medium text-primary">
                                     Face-Cam (30%)
                                   </div>
-                                  <div className="flex h-[70%] items-center justify-center bg-slate-900 text-[10px] text-slate-300">
+                                  <div className="flex h-[70%] items-center justify-center bg-secondary text-[10px] text-secondary-foreground">
                                     Gameplay (HUD-safe)
                                   </div>
                                 </>
                               ) : draftLayout === "pip_overlay" ? (
-                                <div className="relative flex h-full items-center justify-center bg-slate-900 text-[10px] text-slate-300">
+                                <div className="relative flex h-full items-center justify-center bg-secondary text-[10px] text-secondary-foreground">
                                   Gameplay Main
-                                  <div className="absolute left-2 top-7 rounded border border-primary bg-primary/25 px-2 py-3 text-[9px] font-medium text-primary">
+                                  <div className="absolute left-2 top-7 rounded border border-primary bg-primary/20 px-2 py-3 text-[9px] font-medium text-primary">
                                     Face-Cam PiP
                                   </div>
                                 </div>
                               ) : (
-                                <div className="flex h-full items-center justify-center bg-slate-900 text-[10px] text-slate-300">
+                                <div className="flex h-full items-center justify-center bg-secondary text-[10px] text-secondary-foreground">
                                   Gameplay Focus
                                 </div>
                               )}
@@ -1422,8 +1507,8 @@ export function JobWorkspaceClient({
 
                           {/* Render Exports History & Downloads */}
                           <div className="space-y-2.5">
-                            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                              Rendered MP4 Exports ({job.renderExports.length})
+                            <h3 className="text-xs font-medium text-muted-foreground">
+                              Rendered MP4 exports ({job.renderExports.length})
                             </h3>
 
                             {job.renderExports.length === 0 ? (
