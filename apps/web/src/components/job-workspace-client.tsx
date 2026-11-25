@@ -863,7 +863,10 @@ export function JobWorkspaceClient({
                         />
 
                         {/* Face-Cam Source Box Indicator */}
-                        {draftFaceCam && draftFaceCam.enabled !== false && draftLayout !== "gameplay_focus" && (
+                        {draftFaceCam &&
+                          draftFaceCam.enabled !== false &&
+                          draftLayout !== "gameplay_focus" &&
+                          draftLayout !== "podcast_center_fill" && (
                           <div
                             className="pointer-events-none absolute border-2 border-primary bg-primary/15"
                             style={{
@@ -1140,7 +1143,7 @@ export function JobWorkspaceClient({
                               <p className="text-xs font-medium text-muted-foreground">
                                 Vertical 9:16 Composition Mode
                               </p>
-                              <div className="grid gap-2 sm:grid-cols-3">
+                              <div className="grid gap-2 sm:grid-cols-2">
                                 {(
                                   [
                                     {
@@ -1151,12 +1154,17 @@ export function JobWorkspaceClient({
                                     {
                                       id: "pip_overlay",
                                       title: "Face-Cam PiP",
-                                      desc: "Gameplay main area + framed cam overlay",
+                                      desc: "Main video + framed corner webcam overlay",
                                     },
                                     {
                                       id: "gameplay_focus",
-                                      title: "Gameplay Focus",
-                                      desc: "No face-cam, HUD-safe ambient framing",
+                                      title: "16:9 Full Fit",
+                                      desc: "Keeps wide frame intact (multi-host podcasts & HUD)",
+                                    },
+                                    {
+                                      id: "podcast_center_fill",
+                                      title: "Podcast 9:16 Fill",
+                                      desc: "Full-bleed center crop for solo speakers & talking heads",
                                     },
                                   ] as const
                                 ).map((opt) => (
@@ -1165,7 +1173,11 @@ export function JobWorkspaceClient({
                                     type="button"
                                     onClick={() => {
                                       setDraftLayout(opt.id);
-                                      if (opt.id !== "gameplay_focus" && !normalizeFaceCamRegion(draftFaceCam)) {
+                                      if (
+                                        opt.id !== "gameplay_focus" &&
+                                        opt.id !== "podcast_center_fill" &&
+                                        !normalizeFaceCamRegion(draftFaceCam)
+                                      ) {
                                         setDraftFaceCam({
                                           ...CORNER_PRESETS.bottom_left,
                                           confidence: 1,
@@ -1189,7 +1201,7 @@ export function JobWorkspaceClient({
                               </div>
                             </div>
 
-                            {draftLayout !== "gameplay_focus" && (
+                            {draftLayout !== "gameplay_focus" && draftLayout !== "podcast_center_fill" && (
                               <div className="space-y-3 rounded-lg border border-border bg-secondary/25 p-3.5">
                                 <div className="flex items-center justify-between">
                                   <p className="flex items-center gap-1.5 text-xs font-medium">
@@ -1291,9 +1303,13 @@ export function JobWorkspaceClient({
                                     Face-Cam PiP
                                   </div>
                                 </div>
+                              ) : draftLayout === "podcast_center_fill" ? (
+                                <div className="flex h-full items-center justify-center bg-primary/10 text-[10px] font-medium text-primary">
+                                  Podcast 9:16 Center Fill
+                                </div>
                               ) : (
                                 <div className="flex h-full items-center justify-center bg-secondary text-[10px] text-secondary-foreground">
-                                  Gameplay Focus
+                                  16:9 Full Fit
                                 </div>
                               )}
                               {/* Caption safe zone */}

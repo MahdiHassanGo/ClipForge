@@ -204,9 +204,11 @@ export async function scrapeMediaFromUrl(params: ScrapeMediaParams): Promise<str
   logger.info("Starting direct media scrape", { jobId, url });
 
   const outputTemplate = path.join(workDir, "scraped_source.%(ext)s");
-  const ytdlpArgs = [
+  const baseArgs = [
     "--js-runtimes",
     `node:${nodeBin}`,
+    "--remote-components",
+    "ejs:github",
     "--ffmpeg-location",
     ffmpegBin,
     "--no-playlist",
@@ -218,12 +220,12 @@ export async function scrapeMediaFromUrl(params: ScrapeMediaParams): Promise<str
     "10",
     "--concurrent-fragments",
     "4",
-    "--write-auto-subs",
-    "--write-subs",
-    "--sub-langs",
-    "en.*,en",
-    "--sub-format",
-    "vtt",
+  ];
+
+  // Never request subtitles inside the primary media download: YouTube frequently returns
+  // HTTP 429 on timedtext subtitle endpoints, which causes yt-dlp to abort the entire video download.
+  const primaryArgs = [
+    ...baseArgs,
     "-f",
     "bestvideo[height<=720][vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/best[ext=mp4]/best",
     "--merge-output-format",
@@ -236,14 +238,76 @@ export async function scrapeMediaFromUrl(params: ScrapeMediaParams): Promise<str
   try {
     await runSpawnYtDlp({
       bin: ytdlpBin,
-      args: ytdlpArgs,
+      args: primaryArgs,
       workDir,
       onProgress,
     });
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    logger.error("yt-dlp scrape failed", { url, error: errorMsg });
-    throw new Error(`Failed to scrape media from link: ${errorMsg.slice(-500)}`);
+  } catch (primaryErr) {
+    const primaryMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+    logger.warn("Primary yt-dlp scrape failed; retrying with fallback client & format selector", {
+      url,
+      error: primaryMsg,
+    });
+    onProgress?.("Retrying media download with alternate extractor client...");
+
+    const fallbackArgs = [
+      ...baseArgs,
+      "--extractor-args",
+      "youtube:player_client=android_vr,web_safari",
+      "-f",
+      "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+      "--merge-output-format",
+      "mp4",
+      "-o",
+      outputTemplate,
+      url,
+    ];
+
+    try {
+      await runSpawnYtDlp({
+        bin: ytdlpBin,
+        args: fallbackArgs,
+        workDir,
+        onProgress,
+      });
+    } catch (fallbackErr) {
+      const errorMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+      logger.error("yt-dlp scrape failed after fallback retry", { url, error: errorMsg });
+      throw new Error(`Failed to scrape media from link: ${errorMsg.slice(-500)}`);
+    }
+  }
+
+  // Optional non-fatal subtitle fetch (if YouTube returns 429 Too Many Requests, ignore and rely on STT)
+  try {
+    await runSpawnYtDlp({
+      bin: ytdlpBin,
+      args: [
+        "--js-runtimes",
+        `node:${nodeBin}`,
+        "--remote-components",
+        "ejs:github",
+        "--no-playlist",
+        "--skip-download",
+        "--ignore-errors",
+        "--write-auto-subs",
+        "--write-subs",
+        "--sub-langs",
+        "en.*,bn.*,en,bn",
+        "--sub-format",
+        "vtt",
+        "-o",
+        outputTemplate,
+        url,
+      ],
+      workDir,
+      inactivityTimeoutMs: 25_000,
+      totalTimeoutMs: 30_000,
+    });
+  } catch (subErr) {
+    logger.info("Optional subtitle fetch skipped (using Whisper STT instead)", {
+      url,
+      reason: subErr instanceof Error ? subErr.message.slice(0, 180) : String(subErr),
+    });
   }
 
   // Find the scraped media file in workDir (excluding subtitles and partial downloads)

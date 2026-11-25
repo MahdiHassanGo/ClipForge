@@ -156,7 +156,7 @@ const AGENT_TOOLS: AgentToolDefinition[] = [
         reason: { type: "string", description: "Why this moment is compelling." },
         layoutMode: {
           type: "string",
-          enum: ["split_cam_top", "pip_overlay", "gameplay_focus"],
+          enum: ["split_cam_top", "pip_overlay", "gameplay_focus", "podcast_center_fill"],
         },
         captionStyle: {
           type: "string",
@@ -186,7 +186,7 @@ const AGENT_TOOLS: AgentToolDefinition[] = [
         status: { type: "string", enum: ["suggested", "selected", "discarded"] },
         layoutMode: {
           type: "string",
-          enum: ["split_cam_top", "pip_overlay", "gameplay_focus"],
+          enum: ["split_cam_top", "pip_overlay", "gameplay_focus", "podcast_center_fill"],
         },
         captionStyle: {
           type: "string",

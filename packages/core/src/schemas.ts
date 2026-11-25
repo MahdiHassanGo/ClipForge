@@ -27,6 +27,8 @@ export const inspectYoutubeSchema = z.object({
     .max(2048, "URL is too long."),
 });
 
+export const contentModeSchema = z.enum(["auto", "gaming", "podcast"]);
+
 export const analysisConfigSchema = z
   .object({
     minClipSec: z.coerce.number().min(5).max(120).default(20),
@@ -37,6 +39,7 @@ export const analysisConfigSchema = z
     captionLanguage: z
       .enum(["auto", "en", "bn", "bn_en", "es", "fr", "de", "pt", "ja", "ko", "hi"])
       .default("en"),
+    contentMode: contentModeSchema.optional().default("auto"),
   })
   .refine((cfg) => cfg.minClipSec <= cfg.maxClipSec, {
     message: "Minimum clip duration must be less than or equal to maximum duration.",
@@ -105,6 +108,7 @@ export const layoutModeSchema = z.enum([
   "split_cam_top",
   "pip_overlay",
   "gameplay_focus",
+  "podcast_center_fill",
 ]);
 
 export const captionStyleSchema = z.enum([
@@ -276,6 +280,7 @@ export function getDefaultAnalysisConfig(
     scoreThreshold: env.CLIP_SCORE_THRESHOLD ?? 0.45,
     maxCandidates: env.CLIP_MAX_CANDIDATES ?? 8,
     captionLanguage: "en",
+    contentMode: "auto",
   });
   if (parsed.success) {
     return parsed.data;
@@ -287,5 +292,6 @@ export function getDefaultAnalysisConfig(
     scoreThreshold: 0.45,
     maxCandidates: 8,
     captionLanguage: "en",
+    contentMode: "auto",
   };
 }

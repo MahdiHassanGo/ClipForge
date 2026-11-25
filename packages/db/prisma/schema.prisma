@@ -52,6 +52,7 @@ enum LayoutMode {
   split_cam_top
   pip_overlay
   gameplay_focus
+  podcast_center_fill
 }
 
 enum LiveSessionStatus {

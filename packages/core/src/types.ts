@@ -35,7 +35,13 @@ export type SceneEventType =
 
 export type CandidateStatus = "suggested" | "selected" | "discarded";
 
-export type LayoutMode = "split_cam_top" | "pip_overlay" | "gameplay_focus";
+export type LayoutMode =
+  | "split_cam_top"
+  | "pip_overlay"
+  | "gameplay_focus"
+  | "podcast_center_fill";
+
+export type ContentMode = "auto" | "gaming" | "podcast";
 
 export type CaptionStyle =
   | "bold_gaming"
@@ -162,6 +168,7 @@ export interface AnalysisConfig {
   scoreThreshold: number;
   maxCandidates: number;
   captionLanguage: string;
+  contentMode?: ContentMode;
 }
 
 export interface MediaProbeResult {

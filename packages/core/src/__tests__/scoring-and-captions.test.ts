@@ -250,4 +250,69 @@ describe("Candidate validation, multimodal scoring & synced captions", () => {
     expect(top.signalBreakdown.chatVelocityScore).toBeGreaterThan(0.6);
     expect(top.reason).toMatch(/chat|surge|hype/i);
   });
+
+  it("scores calm static-camera podcasts via speech hooks and sets clean_minimal podcast defaults", () => {
+    const scorer = new DefaultClipScoringProvider();
+    const durationSec = 120;
+
+    const audioTimeline = Array.from({ length: durationSec }, (_, second) => ({
+      second,
+      rmsDb: -24,
+      peakDb: -10,
+      reactionScore: second >= 45 && second <= 62 ? 0.68 : 0.12,
+      isSilenceToBurst: false,
+    }));
+
+    // Static podcast camera: very low motion
+    const motionTimeline = Array.from({ length: durationSec }, (_, second) => ({
+      second,
+      motionScore: 0.04,
+      sceneCut: false,
+    }));
+
+    const drafts = scorer.generateCandidates({
+      probe: {
+        durationSec,
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        hasAudio: true,
+        videoCodec: "h264",
+        audioCodec: "aac",
+      },
+      transcriptSegments: [
+        {
+          index: 0,
+          startSec: 44,
+          endSec: 60,
+          text: "The truth is nobody knows what happened inside the prison during that trial.",
+          language: "en",
+          confidence: 0.94,
+          lowConfidence: false,
+          needsReview: false,
+          words: [],
+        },
+      ],
+      audioTimeline,
+      motionTimeline,
+      sceneEvents: [],
+      faceCam: { detected: false, region: null, method: "none" },
+      config: {
+        minClipSec: 20,
+        maxClipSec: 60,
+        targetClipSec: 35,
+        scoreThreshold: 0.45,
+        maxCandidates: 3,
+        captionLanguage: "bn_en",
+        contentMode: "podcast",
+      },
+    });
+
+    expect(drafts.length).toBeGreaterThan(0);
+    const top = drafts[0]!;
+    expect(top.captionStyle).toBe("clean_minimal");
+    expect(top.layoutMode).toBe("gameplay_focus");
+    expect(top.title).toContain("The truth is nobody knows");
+    expect(top.score).toBeGreaterThanOrEqual(0.45);
+  });
 });

@@ -174,8 +174,13 @@ export class FfmpegVideoRendererProvider implements VideoRendererProvider {
         `[cam_src]crop=${crop.w}:${crop.h}:${crop.x}:${crop.y},scale=${pipW}:${pipH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${pipW}:${pipH},pad=${pipW + border * 2}:${pipH + border * 2}:${border}:${border}:color=0x38bdf8[cam]`,
         `[base][cam]overlay=56:210,fps=${spec.fps},format=yuv420p${captionFilterSuffix}[vout]`,
       ].join(";");
+    } else if (request.layoutMode === "podcast_center_fill") {
+      // Podcast / Talking-Head Center Fill: full-bleed 9:16 center crop with no blur bars
+      filterComplex = [
+        `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase:flags=lanczos,crop=${W}:${H},fps=${spec.fps},format=yuv420p${captionFilterSuffix}[vout]`,
+      ].join(";");
     } else {
-      // Gameplay focus: blurred ambient 9:16 fill + crisp readable gameplay centered above bottom UI safe zone
+      // Gameplay / Full-Frame 16:9 Fit: blurred ambient 9:16 fill + crisp wide frame centered above bottom UI safe zone
       filterComplex = [
         `[0:v]split=2[bg_src][fg_src]`,
         `[bg_src]scale=${W}:${H}:force_original_aspect_ratio=increase:flags=bilinear,crop=${W}:${H},boxblur=22:2,eq=brightness=-0.14[bg]`,

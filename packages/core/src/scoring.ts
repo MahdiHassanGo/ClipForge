@@ -16,6 +16,15 @@ const HYPE_PATTERNS: ReadonlyArray<{ pattern: RegExp; weight: number; label: str
   { pattern: /[!?]{1,3}/, weight: 0.35, label: "emphatic delivery" },
 ];
 
+const PODCAST_PATTERNS: ReadonlyArray<{ pattern: RegExp; weight: number; label: string }> = [
+  { pattern: /\b(the truth is|nobody knows|most people don't|here'?s the thing|what happened was|biggest mistake|unpopular opinion|changed everything)\b/i, weight: 0.92, label: "strong story hook" },
+  { pattern: /\b(why do you|how did you|let me explain|the reason why|the problem with|in my experience|at the end of the day|imagine if)\b/i, weight: 0.82, label: "key insight or question" },
+  { pattern: /\b(honestly|literally|actually|secret|exposed|controversial|shocking|prison|trial|story|funny)\b/i, weight: 0.72, label: "compelling talking point" },
+  { pattern: /\b(ashole|sotti|kintu|karon|bolte gele|ekhon|ki bolbo|bhabte|obak|bhai)\b/i, weight: 0.78, label: "conversational emphasis" },
+  { pattern: /(আসলে|সত্যি|কিন্তু|কারণ|গল্প|রহস্য|অভিজ্ঞতা|প্রশ্ন|অবাক|ভয়ঙ্কর|গুরুত্বপূর্ণ)/, weight: 0.82, label: "Bangla podcast hook" },
+  { pattern: /[?]{1,2}/, weight: 0.55, label: "engaging question" },
+];
+
 function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
@@ -136,7 +145,11 @@ export class DefaultClipScoringProvider implements ClipScoringProvider {
         continue;
       }
 
-      const { score, labels } = scoreTranscriptText(seg.text, seg.confidence);
+      const { score, labels } = scoreTranscriptText(
+        seg.text,
+        seg.confidence,
+        config.contentMode ?? "auto",
+      );
       const startIdx = Math.max(0, Math.floor(seg.startSec));
       const endIdx = Math.min(totalSeconds - 1, Math.floor(seg.endSec));
       for (let i = startIdx; i <= endIdx; i++) {
@@ -152,8 +165,27 @@ export class DefaultClipScoringProvider implements ClipScoringProvider {
 
     // 2. Compute per-second fused excitement score (explicitly multi-signal, never loudness-only)
     const hasChatSignals = timeline.some((b) => b.chatScore > 0);
+    const avgMotion =
+      timeline.reduce((sum, b) => sum + b.motionScore, 0) / Math.max(1, timeline.length);
+    const maxMotion = timeline.reduce((max, b) => Math.max(max, b.motionScore), 0);
+    const isPodcastMode =
+      config.contentMode === "podcast" ||
+      (config.contentMode !== "gaming" &&
+        !hasChatSignals &&
+        !input.faceCam.detected &&
+        hasRealTranscript &&
+        avgMotion < 0.2 &&
+        maxMotion < 0.45);
 
     const perSecondComposite = timeline.map((bin) => {
+      if (isPodcastMode) {
+        return (
+          bin.speechScore * 0.55 +
+          bin.reactionScore * 0.28 +
+          bin.sceneScore * 0.10 +
+          bin.motionScore * 0.07
+        );
+      }
       if (hasChatSignals) {
         return (
           bin.chatScore * 0.35 +
@@ -262,26 +294,32 @@ export class DefaultClipScoringProvider implements ClipScoringProvider {
         (breakdown.chatVelocityScore ?? 0) > 0.05 || timeline.some((b) => b.chatScore > 0.05);
 
       const finalScore = clamp01(
-        hasChatSignals
-          ? (breakdown.chatVelocityScore ?? 0) * 0.28 +
+        isPodcastMode
+          ? breakdown.speechScore * 0.50 +
               breakdown.reactionScore * 0.24 +
-              breakdown.motionScore * 0.20 +
-              breakdown.speechScore * 0.16 +
-              breakdown.sceneScore * 0.07 +
-              breakdown.faceCamBonus
-          : hasRealTranscript
-            ? breakdown.speechScore * 0.32 +
-                breakdown.reactionScore * 0.22 +
-                breakdown.motionScore * 0.22 +
-                breakdown.sceneScore * 0.12 +
-                breakdown.contextScore * 0.07 +
+              breakdown.contextScore * 0.16 +
+              breakdown.sceneScore * 0.06 +
+              breakdown.motionScore * 0.04
+          : hasChatSignals
+            ? (breakdown.chatVelocityScore ?? 0) * 0.28 +
+                breakdown.reactionScore * 0.24 +
+                breakdown.motionScore * 0.20 +
+                breakdown.speechScore * 0.16 +
+                breakdown.sceneScore * 0.07 +
                 breakdown.faceCamBonus
-            : breakdown.reactionScore * 0.30 +
-                breakdown.motionScore * 0.30 +
-                breakdown.sceneScore * 0.18 +
-                breakdown.speechScore * 0.08 +
-                breakdown.contextScore * 0.09 +
-                breakdown.faceCamBonus,
+            : hasRealTranscript
+              ? breakdown.speechScore * 0.32 +
+                  breakdown.reactionScore * 0.22 +
+                  breakdown.motionScore * 0.22 +
+                  breakdown.sceneScore * 0.12 +
+                  breakdown.contextScore * 0.07 +
+                  breakdown.faceCamBonus
+              : breakdown.reactionScore * 0.30 +
+                  breakdown.motionScore * 0.30 +
+                  breakdown.sceneScore * 0.18 +
+                  breakdown.speechScore * 0.08 +
+                  breakdown.contextScore * 0.09 +
+                  breakdown.faceCamBonus,
       );
 
       // Apply threshold, but always allow at least 1 top moment so the user isn't left empty-handed
@@ -310,6 +348,7 @@ export class DefaultClipScoringProvider implements ClipScoringProvider {
         hasSilenceToBurst,
         faceCamDetected: input.faceCam.detected,
         hasRealTranscript,
+        isPodcastMode,
         excerpt,
         startSec: window.startSec,
         endSec: window.endSec,
@@ -321,6 +360,7 @@ export class DefaultClipScoringProvider implements ClipScoringProvider {
         windowLabels,
         breakdown,
         hasSilenceToBurst,
+        isPodcastMode,
       });
 
       acceptedWindows.push({ startSec: window.startSec, endSec: window.endSec });
@@ -334,12 +374,12 @@ export class DefaultClipScoringProvider implements ClipScoringProvider {
         signalBreakdown: breakdown,
         reason,
         transcriptExcerpt: excerpt,
-        layoutMode: defaultLayout,
+        layoutMode: isPodcastMode ? "gameplay_focus" : defaultLayout,
         faceCamCrop: input.faceCam.region
           ? { ...input.faceCam.region, enabled: input.faceCam.detected }
           : null,
         captionLanguage: config.captionLanguage,
-        captionStyle: "bold_gaming",
+        captionStyle: isPodcastMode ? "clean_minimal" : "bold_gaming",
         captions,
         hasUnreviewedCaptions: captions.some((c) => c.needsReview),
       });
@@ -353,14 +393,24 @@ export class DefaultClipScoringProvider implements ClipScoringProvider {
 function scoreTranscriptText(
   text: string,
   confidence: number,
+  contentMode: "auto" | "gaming" | "podcast" = "auto",
 ): { score: number; labels: string[] } {
   const cleaned = text.trim();
   if (!cleaned) return { score: 0, labels: [] };
 
-  let best = 0.25; // baseline for active speech
+  // Longer, substantive speech segments naturally score higher for podcasts/interviews
+  const wordCount = cleaned.split(/\s+/).length;
+  let best = wordCount >= 8 ? 0.42 : 0.28;
   const labels: string[] = [];
 
-  for (const rule of HYPE_PATTERNS) {
+  const activeRules =
+    contentMode === "podcast"
+      ? PODCAST_PATTERNS
+      : contentMode === "gaming"
+        ? HYPE_PATTERNS
+        : [...PODCAST_PATTERNS, ...HYPE_PATTERNS];
+
+  for (const rule of activeRules) {
     if (rule.pattern.test(cleaned)) {
       best = Math.max(best, rule.weight);
       labels.push(rule.label);
@@ -570,6 +620,7 @@ function buildExplanation(params: {
   hasSilenceToBurst: boolean;
   faceCamDetected: boolean;
   hasRealTranscript: boolean;
+  isPodcastMode?: boolean;
   excerpt: string;
   startSec: number;
   endSec: number;
@@ -579,7 +630,11 @@ function buildExplanation(params: {
   if (params.windowLabels.length > 0) {
     parts.push(`detected ${params.windowLabels.slice(0, 2).join(" & ")} in speech`);
   } else if (params.hasRealTranscript && params.breakdown.speechScore >= 0.4) {
-    parts.push("active commentary matched with gameplay peak");
+    parts.push(
+      params.isPodcastMode
+        ? "sustained conversational segment with strong spoken delivery"
+        : "active commentary matched with gameplay peak",
+    );
   }
 
   if (params.windowLabels.includes("live chat velocity spike") || (params.breakdown.chatVelocityScore ?? 0) >= 0.45) {
@@ -589,29 +644,33 @@ function buildExplanation(params: {
   if (params.hasSilenceToBurst) {
     parts.push("sharp reaction burst following tense quiet buildup");
   } else if (params.breakdown.reactionScore >= 0.5) {
-    parts.push("distinct vocal/audio reaction shift (relative to baseline)");
+    parts.push("distinct vocal/audio emphasis shift (relative to baseline)");
   }
 
-  if (params.breakdown.motionScore >= 0.5 && params.breakdown.sceneScore >= 0.5) {
+  if (!params.isPodcastMode && params.breakdown.motionScore >= 0.5 && params.breakdown.sceneScore >= 0.5) {
     parts.push("high gameplay motion paired with rapid scene transitions");
-  } else if (params.breakdown.motionScore >= 0.5) {
+  } else if (!params.isPodcastMode && params.breakdown.motionScore >= 0.5) {
     parts.push("sustained high-intensity gameplay action");
   } else if (params.breakdown.sceneScore >= 0.5) {
-    parts.push("notable scene cut / event transition");
+    parts.push("notable camera angle / scene transition");
   }
 
-  if (params.faceCamDetected) {
+  if (!params.isPodcastMode && params.faceCamDetected) {
     parts.push("face-cam region detected for split-screen reaction framing");
   }
 
   if (parts.length === 0) {
-    parts.push("strongest combined audiovisual momentum window in this section");
+    parts.push(
+      params.isPodcastMode
+        ? "strongest conversational pacing and vocal emphasis in this section"
+        : "strongest combined audiovisual momentum window in this section",
+    );
   }
 
   const durationSec = Math.round(params.endSec - params.startSec);
   const joined = parts.join("; ");
   const capitalized = joined.charAt(0).toUpperCase() + joined.slice(1);
-  return `${capitalized}. Boundaries (${durationSec}s) preserve lead-in setup and reaction payoff.`;
+  return `${capitalized}. Boundaries (${durationSec}s) preserve lead-in setup and complete payoff.`;
 }
 
 function suggestClipTitle(params: {
@@ -620,7 +679,19 @@ function suggestClipTitle(params: {
   windowLabels: string[];
   breakdown: SignalBreakdown;
   hasSilenceToBurst: boolean;
+  isPodcastMode?: boolean;
 }): string {
+  if (params.isPodcastMode) {
+    const cleanExcerpt = params.excerpt
+      .replace(/^No automatic speech transcript.*$/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (cleanExcerpt.length >= 12) {
+      const words = cleanExcerpt.split(" ").slice(0, 7).join(" ").replace(/[.,;:!?]+$/, "");
+      return `"${words}..."`;
+    }
+    return `Podcast Highlight #${params.rank}`;
+  }
   if (params.windowLabels.includes("live chat velocity spike") || (params.breakdown.chatVelocityScore ?? 0) >= 0.5) {
     return `Live Chat Hype Surge #${params.rank}`;
   }

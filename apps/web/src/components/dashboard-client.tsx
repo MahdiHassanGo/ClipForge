@@ -26,6 +26,7 @@ import {
 import {
   AI_PROVIDER_CATALOG,
   SUPPORTED_CAPTION_LANGUAGES,
+  type ContentMode,
   type JobStatus,
   type StreamType,
   type YouTubeMetadataResult,
@@ -131,6 +132,9 @@ export function DashboardClient({
   );
   const [captionLanguage, setCaptionLanguage] = useState(
     capabilities.defaultAnalysisConfig.captionLanguage,
+  );
+  const [contentMode, setContentMode] = useState<ContentMode>(
+    capabilities.defaultAnalysisConfig.contentMode ?? "auto",
   );
 
   const [storageInfo, setStorageInfo] = useState<{
@@ -281,6 +285,7 @@ export function DashboardClient({
             scoreThreshold: Number(scoreThreshold),
             maxCandidates: capabilities.defaultAnalysisConfig.maxCandidates,
             captionLanguage,
+            contentMode,
           },
         }),
       });
@@ -455,7 +460,31 @@ export function DashboardClient({
             </form>
 
             {showSettings && (
-              <div className="grid gap-3 rounded-md border border-border/70 bg-secondary/20 p-3.5 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="grid gap-3 rounded-md border border-border/70 bg-secondary/20 p-3.5 sm:grid-cols-2 lg:grid-cols-6">
+                <label className="space-y-1 text-xs">
+                  <span className="text-muted-foreground">Content Mode</span>
+                  <select
+                    value={contentMode}
+                    onChange={(e) => {
+                      const next = e.target.value as ContentMode;
+                      setContentMode(next);
+                      if (next === "podcast") {
+                        setMinClipSec(25);
+                        setTargetClipSec(45);
+                        setMaxClipSec(90);
+                      } else if (next === "gaming") {
+                        setMinClipSec(20);
+                        setTargetClipSec(35);
+                        setMaxClipSec(60);
+                      }
+                    }}
+                    className="flex h-8 w-full rounded-md border border-border/80 bg-secondary/30 px-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60"
+                  >
+                    <option value="auto">Auto-detect</option>
+                    <option value="podcast">Podcast &amp; Talk</option>
+                    <option value="gaming">Gaming &amp; Streams</option>
+                  </select>
+                </label>
                 <label className="space-y-1 text-xs">
                   <span className="text-muted-foreground">Min Clip</span>
                   <Input
@@ -516,7 +545,7 @@ export function DashboardClient({
                   </select>
                 </label>
 
-                <div className="sm:col-span-2 lg:col-span-5 flex flex-col gap-2 rounded border border-border/70 bg-secondary/30 p-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="sm:col-span-2 lg:col-span-6 flex flex-col gap-2 rounded border border-border/70 bg-secondary/30 p-2.5 sm:flex-row sm:items-center sm:justify-between">
                   <div className="space-y-0.5">
                     <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
                       <HardDrive className="h-3.5 w-3.5 text-primary" /> Custom Storage & Clip Destination
