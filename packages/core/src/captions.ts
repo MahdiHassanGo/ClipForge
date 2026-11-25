@@ -72,6 +72,8 @@ export const EXPORT_PRESETS: Readonly<Record<ExportPreset, ExportPresetSpec>> = 
 
 export const SUPPORTED_CAPTION_LANGUAGES = [
   { code: "en", label: "English" },
+  { code: "bn_en", label: "Banglish (Romanized Bangla)" },
+  { code: "bn", label: "Bangla (বাংলা)" },
   { code: "es", label: "Spanish" },
   { code: "fr", label: "French" },
   { code: "de", label: "German" },

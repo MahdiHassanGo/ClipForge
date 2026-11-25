@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   createSpeechRecognitionProvider,
   HonestFallbackSpeechProvider,
+  SubtitleAwareSpeechRecognitionProvider,
 } from "../speech-provider.js";
 
 describe("Speech recognition provider selection & honest fallback", () => {
@@ -59,5 +60,45 @@ describe("Speech recognition provider selection & honest fallback", () => {
         LOCAL_WHISPER_MODEL_PATH: "/tmp/ggml-base.en.bin",
       }).name,
     ).toBe("local_whisper_cpp");
+  });
+
+  it("transliterates Bengali segments and words to Banglish when languageHint is bn_en", async () => {
+    const wrapped = new SubtitleAwareSpeechRecognitionProvider({
+      name: "mock_bn_stt",
+      async transcribe() {
+        return {
+          providerName: "mock_bn_stt",
+          language: "bn",
+          segments: [
+            {
+              index: 0,
+              startSec: 1.0,
+              endSec: 4.5,
+              text: "কেমন আছেন ভাই",
+              language: "bn",
+              confidence: 0.92,
+              lowConfidence: false,
+              needsReview: false,
+              words: [
+                { word: "কেমন", startSec: 1.0, endSec: 1.8, confidence: 0.9, lowConfidence: false },
+                { word: "আছেন", startSec: 1.9, endSec: 2.8, confidence: 0.92, lowConfidence: false },
+                { word: "ভাই", startSec: 2.9, endSec: 4.0, confidence: 0.94, lowConfidence: false },
+              ],
+            },
+          ],
+        };
+      },
+    });
+
+    const result = await wrapped.transcribe({
+      audioFilePath: "/tmp/nonexistent-dir/audio.mp4",
+      durationSec: 10,
+      languageHint: "bn_en",
+      audioTimeline: [],
+    });
+
+    expect(result.language).toBe("bn_en");
+    expect(result.segments[0]?.text).toBe("kemon achhen bhai");
+    expect(result.segments[0]?.words.map((w) => w.word)).toEqual(["kemon", "achhen", "bhai"]);
   });
 });

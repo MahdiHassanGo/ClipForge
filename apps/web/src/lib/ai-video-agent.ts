@@ -9,6 +9,7 @@ import {
   exportPresetSchema,
   layoutModeSchema,
   normalizeFaceCamRegion,
+  transliterateBengaliToBanglish,
   validateCandidateBounds,
   type AiAgentActionRecord,
   type AiProviderType,
@@ -79,10 +80,14 @@ const updateClipArgsSchema = z.object({
   status: candidateStatusSchema.optional(),
   layoutMode: layoutModeSchema.optional(),
   captionStyle: captionStyleSchema.optional(),
+  captionLanguage: z
+    .enum(["auto", "en", "bn", "bn_en", "es", "fr", "de", "pt", "ja", "ko", "hi"])
+    .optional(),
   captionsEnabled: z.boolean().optional(),
   faceCamCorner: z
     .enum(["top_left", "top_right", "bottom_left", "bottom_right"])
     .optional(),
+  transliterateToBanglish: z.boolean().optional(),
   captions: z.array(captionCueSchema).max(200).optional(),
 });
 
@@ -169,7 +174,7 @@ const AGENT_TOOLS: AgentToolDefinition[] = [
   {
     name: "update_clip_candidate",
     description:
-      "Edit an existing clip candidate: adjust trim timestamps, rename title, change status (selected/suggested/discarded), switch 9:16 layoutMode, change captionStyle, move faceCamCorner, or edit caption cues.",
+      "Edit an existing clip candidate: adjust trim timestamps, rename title, change status (selected/suggested/discarded), switch 9:16 layoutMode, change captionStyle or captionLanguage, move faceCamCorner, convert Bengali captions to Banglish (transliterateToBanglish=true), or rewrite caption cues.",
     parameters: {
       type: "object",
       required: ["clipId"],
@@ -187,10 +192,34 @@ const AGENT_TOOLS: AgentToolDefinition[] = [
           type: "string",
           enum: ["bold_gaming", "clean_minimal", "boxed_high_contrast"],
         },
+        captionLanguage: {
+          type: "string",
+          enum: ["auto", "en", "bn", "bn_en", "es", "fr", "de", "pt", "ja", "ko", "hi"],
+        },
         captionsEnabled: { type: "boolean" },
         faceCamCorner: {
           type: "string",
           enum: ["top_left", "top_right", "bottom_left", "bottom_right"],
+        },
+        transliterateToBanglish: {
+          type: "boolean",
+          description: "Set true to convert Bengali script captions on this clip into Romanized Banglish.",
+        },
+        captions: {
+          type: "array",
+          description: "Optional updated caption cues array with id, startSec, endSec, text, confidence, needsReview.",
+          items: {
+            type: "object",
+            required: ["id", "startSec", "endSec", "text", "confidence", "needsReview"],
+            properties: {
+              id: { type: "string" },
+              startSec: { type: "number" },
+              endSec: { type: "number" },
+              text: { type: "string" },
+              confidence: { type: "number" },
+              needsReview: { type: "boolean" },
+            },
+          },
         },
       },
     },
@@ -699,6 +728,7 @@ async function executeAgentTool(params: {
         if (args.status !== undefined) updateData.status = args.status;
         if (args.layoutMode !== undefined) updateData.layoutMode = args.layoutMode;
         if (args.captionStyle !== undefined) updateData.captionStyle = args.captionStyle;
+        if (args.captionLanguage !== undefined) updateData.captionLanguage = args.captionLanguage;
         if (args.captionsEnabled !== undefined) updateData.captionsEnabled = args.captionsEnabled;
 
         if (args.faceCamCorner !== undefined) {
@@ -710,8 +740,14 @@ async function executeAgentTool(params: {
         }
 
         if (args.captions !== undefined) {
-          updateData.captionsJson = args.captions as unknown as Prisma.InputJsonValue;
-          updateData.hasUnreviewedCaptions = args.captions.some((c) => c.needsReview);
+          const finalCues = args.transliterateToBanglish
+            ? args.captions.map((c) => ({
+                ...c,
+                text: transliterateBengaliToBanglish(c.text),
+              }))
+            : args.captions;
+          updateData.captionsJson = finalCues as unknown as Prisma.InputJsonValue;
+          updateData.hasUnreviewedCaptions = finalCues.some((c) => c.needsReview);
         } else if (args.startSec !== undefined || args.endSec !== undefined) {
           const segs = await prisma.transcriptSegment.findMany({
             where: {
@@ -723,9 +759,32 @@ async function executeAgentTool(params: {
           });
           const rebuilt = buildCaptionCuesForRange(segs.map(mapSegmentRow), nextStart, nextEnd);
           if (rebuilt.length > 0) {
-            updateData.captionsJson = rebuilt as unknown as Prisma.InputJsonValue;
-            updateData.hasUnreviewedCaptions = rebuilt.some((c) => c.needsReview);
+            const finalCues = args.transliterateToBanglish
+              ? rebuilt.map((c) => ({
+                  ...c,
+                  text: transliterateBengaliToBanglish(c.text),
+                }))
+              : rebuilt;
+            updateData.captionsJson = finalCues as unknown as Prisma.InputJsonValue;
+            updateData.hasUnreviewedCaptions = finalCues.some((c) => c.needsReview);
           }
+        } else if (args.transliterateToBanglish) {
+          const existingCues = Array.isArray(existing.captionsJson)
+            ? (existing.captionsJson as unknown as Array<{
+                id: string;
+                startSec: number;
+                endSec: number;
+                text: string;
+                confidence: number;
+                needsReview: boolean;
+              }>)
+            : [];
+          const banglishCues = existingCues.map((c) => ({
+            ...c,
+            text: transliterateBengaliToBanglish(c.text),
+          }));
+          updateData.captionsJson = banglishCues as unknown as Prisma.InputJsonValue;
+          updateData.captionLanguage = "bn_en";
         }
 
         const updated = await prisma.candidateClip.update({

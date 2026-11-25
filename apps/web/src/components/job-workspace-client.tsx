@@ -27,7 +27,9 @@ import {
 import {
   EXPORT_PRESETS,
   SUPPORTED_CAPTION_LANGUAGES,
+  containsBengaliScript,
   normalizeFaceCamRegion,
+  transliterateBengaliToBanglish,
   type CaptionCue,
   type CaptionStyle,
   type ExportPreset,
@@ -395,6 +397,22 @@ export function JobWorkspaceClient({
     setDraftCaptions((prev) => prev.filter((_, i) => i !== idx));
     setIsDirty(true);
   }
+
+  function convertDraftCaptionsToBanglish() {
+    setDraftCaptions((prev) =>
+      prev.map((cue) => ({
+        ...cue,
+        text: transliterateBengaliToBanglish(cue.text),
+      })),
+    );
+    setDraftCaptionLang("bn_en");
+    setIsDirty(true);
+  }
+
+  const hasBengaliDraftCaptions = useMemo(
+    () => draftCaptions.some((c) => containsBengaliScript(c.text)),
+    [draftCaptions],
+  );
 
   const activeCaptionForPreview = useMemo(() => {
     if (!draftCaptionsEnabled) return null;
@@ -1315,7 +1333,16 @@ export function JobWorkspaceClient({
                               <select
                                 value={draftCaptionLang}
                                 onChange={(e) => {
-                                  setDraftCaptionLang(e.target.value);
+                                  const nextLang = e.target.value;
+                                  setDraftCaptionLang(nextLang);
+                                  if (nextLang === "bn_en" && hasBengaliDraftCaptions) {
+                                    setDraftCaptions((prev) =>
+                                      prev.map((cue) => ({
+                                        ...cue,
+                                        text: transliterateBengaliToBanglish(cue.text),
+                                      })),
+                                    );
+                                  }
                                   setIsDirty(true);
                                 }}
                                 className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs"
@@ -1344,16 +1371,26 @@ export function JobWorkspaceClient({
                               </select>
                             </label>
 
-                            <div className="flex items-end">
+                            <div className="flex items-end gap-2">
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="w-full"
+                                className="flex-1"
                                 onClick={addCaptionCue}
                               >
                                 <Plus className="h-3.5 w-3.5" />
-                                Add Caption Cue
+                                Add Cue
                               </Button>
+                              {(hasBengaliDraftCaptions || draftCaptionLang === "bn") && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={convertDraftCaptionsToBanglish}
+                                  title="Convert Bengali script captions to Romanized Banglish"
+                                >
+                                  To Banglish
+                                </Button>
+                              )}
                             </div>
                           </div>
 

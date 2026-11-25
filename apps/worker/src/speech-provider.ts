@@ -8,7 +8,12 @@ import type {
   TranscriptSegmentData,
   TranscriptWord,
 } from "@clipforge/core";
-import { createLogger, detectSttStatus, resolveLocalWhisperModelPath } from "@clipforge/core";
+import {
+  createLogger,
+  detectSttStatus,
+  resolveLocalWhisperModelPath,
+  transliterateBengaliToBanglish,
+} from "@clipforge/core";
 import { resolveFfmpegPath, runExecFile } from "./ffmpeg-binaries.js";
 import { parseVttSubtitles } from "./vtt-parser.js";
 
@@ -54,6 +59,66 @@ function clamp01(n: number): number {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function resolveWhisperSttHint(languageHint: string, configuredPrompt?: string): {
+  whisperLang?: string;
+  transliterateBanglish: boolean;
+  prompt: string;
+} {
+  if (languageHint === "bn_en") {
+    return {
+      whisperLang: "bn",
+      transliterateBanglish: true,
+      prompt: "Bengali and English podcast or livestream conversation.",
+    };
+  }
+  if (languageHint === "bn") {
+    return {
+      whisperLang: "bn",
+      transliterateBanglish: false,
+      prompt: "বাংলা এবং ইংরেজি পডকাস্ট বা আলোচনা।",
+    };
+  }
+  if (languageHint === "auto") {
+    return {
+      whisperLang: undefined,
+      transliterateBanglish: false,
+      prompt: "Natural spoken podcast, interview, or livestream commentary.",
+    };
+  }
+  if (languageHint === "en") {
+    return {
+      whisperLang: "en",
+      transliterateBanglish: false,
+      prompt:
+        configuredPrompt?.trim() ||
+        "Gaming livestream commentary, podcast discussion, gameplay action, clutch reaction",
+    };
+  }
+  return {
+    whisperLang: languageHint,
+    transliterateBanglish: false,
+    prompt: "Spoken podcast, interview, or livestream commentary.",
+  };
+}
+
+function applyBanglishTransliteration(
+  result: SpeechRecognitionResult,
+): SpeechRecognitionResult {
+  return {
+    ...result,
+    language: "bn_en",
+    segments: result.segments.map((seg) => ({
+      ...seg,
+      language: "bn_en",
+      text: transliterateBengaliToBanglish(seg.text),
+      words: seg.words.map((w) => ({
+        ...w,
+        word: transliterateBengaliToBanglish(w.word),
+      })),
+    })),
+  };
 }
 
 /**
@@ -128,6 +193,8 @@ export class OpenAICompatibleWhisperProvider implements SpeechRecognitionProvide
       const audioBytes = await fs.readFile(chunkPath);
       await fs.rm(chunkPath, { force: true });
 
+      const sttHint = resolveWhisperSttHint(params.languageHint);
+
       const form = new FormData();
       form.append(
         "file",
@@ -138,12 +205,9 @@ export class OpenAICompatibleWhisperProvider implements SpeechRecognitionProvide
       form.append("response_format", "verbose_json");
       form.append("timestamp_granularities[]", "word");
       form.append("timestamp_granularities[]", "segment");
-      form.append(
-        "prompt",
-        "Gaming livestream commentary, gameplay action, clutch reaction, GTA gameplay",
-      );
-      if (params.languageHint && params.languageHint !== "auto") {
-        form.append("language", params.languageHint);
+      form.append("prompt", sttHint.prompt);
+      if (sttHint.whisperLang) {
+        form.append("language", sttHint.whisperLang);
       }
 
       const headers: Record<string, string> = {};
@@ -299,7 +363,9 @@ export class LocalWhisperCppSpeechProvider implements SpeechRecognitionProvider 
       { timeoutMs: 180_000 },
     );
 
-    // Fine-tuned whisper-cli parameters for Apple Silicon Metal & Gaming Accuracy
+    const sttHint = resolveWhisperSttHint(params.languageHint, this.prompt);
+
+    // Fine-tuned whisper-cli parameters for Apple Silicon Metal & Speech Accuracy
     const args = [
       "-m",
       this.modelPath,
@@ -322,10 +388,10 @@ export class LocalWhisperCppSpeechProvider implements SpeechRecognitionProvider 
       "-wt",
       "0.01", // Word timestamp threshold
       "--prompt",
-      this.prompt,
+      sttHint.prompt,
     ];
-    if (params.languageHint && params.languageHint !== "auto") {
-      args.push("-l", params.languageHint);
+    if (sttHint.whisperLang) {
+      args.push("-l", sttHint.whisperLang);
     }
 
     await runExecFile(this.binaryPath, args, { timeoutMs: 600_000 });
@@ -511,11 +577,14 @@ export class SubtitleAwareSpeechRecognitionProvider implements SpeechRecognition
             vttFile,
             segmentCount: segments.length,
           });
-          return {
+          const vttResult: SpeechRecognitionResult = {
             providerName: "native_video_captions",
             language: segments[0]?.language ?? "en",
             segments,
           };
+          return params.languageHint === "bn_en"
+            ? applyBanglishTransliteration(vttResult)
+            : vttResult;
         }
       }
     } catch (err) {
@@ -524,7 +593,10 @@ export class SubtitleAwareSpeechRecognitionProvider implements SpeechRecognition
       });
     }
 
-    return this.inner.transcribe(params);
+    const res = await this.inner.transcribe(params);
+    return params.languageHint === "bn_en"
+      ? applyBanglishTransliteration(res)
+      : res;
   }
 }
 

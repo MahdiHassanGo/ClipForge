@@ -35,7 +35,7 @@ export const analysisConfigSchema = z
     scoreThreshold: z.coerce.number().min(0.1).max(0.95).default(0.45),
     maxCandidates: z.coerce.number().int().min(1).max(20).default(8),
     captionLanguage: z
-      .enum(["auto", "en", "es", "fr", "de", "pt", "ja", "ko", "hi"])
+      .enum(["auto", "en", "bn", "bn_en", "es", "fr", "de", "pt", "ja", "ko", "hi"])
       .default("en"),
   })
   .refine((cfg) => cfg.minClipSec <= cfg.maxClipSec, {
@@ -133,7 +133,7 @@ export const updateCandidateSchema = z
       faceCamRegionSchema.nullable().optional(),
     ),
     captionLanguage: z
-      .enum(["auto", "en", "es", "fr", "de", "pt", "ja", "ko", "hi"])
+      .enum(["auto", "en", "bn", "bn_en", "es", "fr", "de", "pt", "ja", "ko", "hi"])
       .optional(),
     captionStyle: captionStyleSchema.optional(),
     captionsEnabled: z.boolean().optional(),
