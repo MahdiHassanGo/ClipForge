@@ -11,7 +11,6 @@
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)](https://ffmpeg.org/)
 [![Groq Whisper](https://img.shields.io/badge/Groq-Whisper_Large_v3-F55036?style=for-the-badge&logo=groq&logoColor=white)](https://groq.com/)
 
-**Live Production App:** [https://clipforge-app-production.up.railway.app](https://clipforge-app-production.up.railway.app)
 
 </div>
 
