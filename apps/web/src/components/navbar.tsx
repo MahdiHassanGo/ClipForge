@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Clapperboard, KeyRound, LogOut, ShieldCheck } from "lucide-react";
 import { AI_PROVIDER_CATALOG } from "@clipforge/core/client";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { AiProviderDto, CapabilitiesDto, UserDto } from "@/components/types";
 
@@ -106,11 +106,12 @@ export function Navbar({
 
           {user && (
             <div className="flex items-center gap-2">
-              <Link href="/settings/ai" className="sm:hidden">
-                <Button variant="outline" size="sm">
-                  <KeyRound className="h-3.5 w-3.5 text-primary" />
-                  AI Keys
-                </Button>
+              <Link
+                href="/settings/ai"
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }), "sm:hidden")}
+              >
+                <KeyRound className="h-3.5 w-3.5 text-primary" />
+                AI Keys
               </Link>
               <div className="hidden items-center gap-1.5 rounded-md border border-border bg-secondary/50 px-2.5 py-1 text-xs text-muted-foreground sm:flex">
                 <ShieldCheck className="h-3.5 w-3.5 text-accent" />

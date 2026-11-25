@@ -14,7 +14,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { AI_PROVIDER_CATALOG } from "@clipforge/core/client";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { AiProviderDto, JobChatMessageDto } from "@/components/types";
 import { cn, formatTime } from "@/lib/utils";
@@ -175,11 +175,12 @@ export function AiDirectorChat({
               Clear
             </Button>
           )}
-          <Link href="/settings/ai">
-            <Button type="button" size="sm" variant="outline" className="h-7 px-2.5 text-xs">
-              <KeyRound className="h-3.5 w-3.5" />
-              {enabledProviders.length > 0 ? "Manage Keys" : "Connect Key"}
-            </Button>
+          <Link
+            href="/settings/ai"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-7 px-2.5 text-xs")}
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            {enabledProviders.length > 0 ? "Manage Keys" : "Connect Key"}
           </Link>
         </div>
       </div>
@@ -194,11 +195,12 @@ export function AiDirectorChat({
               Your key stays encrypted on your local system and lets the AI agent search this video&apos;s transcript, find moments, create/trim clips, and style captions for you.
             </p>
           </div>
-          <Link href="/settings/ai">
-            <Button size="sm">
-              <KeyRound className="h-3.5 w-3.5" />
-              Connect AI Key
-            </Button>
+          <Link
+            href="/settings/ai"
+            className={buttonVariants({ variant: "default", size: "sm" })}
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            Connect AI Key
           </Link>
         </div>
       )}

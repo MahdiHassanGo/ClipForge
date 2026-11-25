@@ -30,7 +30,7 @@ import {
   type StreamType,
   type YouTubeMetadataResult,
 } from "@clipforge/core/client";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -346,11 +346,12 @@ export function DashboardClient({
               </p>
             </div>
           </div>
-          <Link href="/settings/ai">
-            <Button size="sm" variant={activeAi ? "outline" : "default"}>
-              <KeyRound className="h-3.5 w-3.5" />
-              {activeAi ? "Manage AI Keys" : "Connect AI Key"}
-            </Button>
+          <Link
+            href="/settings/ai"
+            className={buttonVariants({ variant: activeAi ? "outline" : "default", size: "sm" })}
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            {activeAi ? "Manage AI Keys" : "Connect AI Key"}
           </Link>
         </div>
 
@@ -826,10 +827,11 @@ export function DashboardClient({
                               <span>{job._count?.renderExports ?? 0} exports</span>
                             </div>
                             <div className="flex items-center gap-1">
-                              <Link href={`/jobs/${job.id}`}>
-                                <Button size="sm" variant="secondary" className="h-7 px-2.5 text-xs">
-                                  Open Studio
-                                </Button>
+                              <Link
+                                href={`/jobs/${job.id}`}
+                                className={buttonVariants({ variant: "secondary", size: "sm" }) + " h-7 px-2.5 text-xs"}
+                              >
+                                Open Studio
                               </Link>
                               <Button
                                 size="icon"

@@ -35,7 +35,7 @@ import {
   type JobStatus,
   type LayoutMode,
 } from "@clipforge/core/client";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -1582,11 +1582,12 @@ export function JobWorkspaceClient({
                                               <Play className="h-3.5 w-3.5" />
                                               {previewExportId === exp.id ? "Hide" : "Preview"}
                                             </Button>
-                                            <a href={`/api/exports/${exp.id}/download`}>
-                                              <Button size="sm">
-                                                <Download className="h-3.5 w-3.5" />
-                                                Download MP4
-                                              </Button>
+                                            <a
+                                              href={`/api/exports/${exp.id}/download`}
+                                              className={buttonVariants({ variant: "default", size: "sm" })}
+                                            >
+                                              <Download className="h-3.5 w-3.5" />
+                                              Download MP4
                                             </a>
                                           </>
                                         )}
